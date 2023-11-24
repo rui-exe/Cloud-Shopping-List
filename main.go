@@ -1,7 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+	"CoudShoppingList/crdt"
 
-func main() {
-    fmt.Println("hello wokrf")
-}
+)
+

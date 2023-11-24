@@ -1,3 +1,3 @@
-module main
+module CloudShoppingList
 
 go 1.21.3

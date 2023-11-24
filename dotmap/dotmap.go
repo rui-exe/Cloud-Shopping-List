@@ -1,9 +1,9 @@
 package dotmap
 
 import (
-	"main/causalcontext"
-	"main/crdt"
-	"main/customset"
+	"CloudShoppingList/causalcontext"
+	"CloudShoppingList/crdt"
+	"CloudShoppingList/customset"
 )
 
 type DotMap struct {

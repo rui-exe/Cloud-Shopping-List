@@ -1,7 +1,7 @@
 package causalcontext
 
 import (
-	"../customset"
+	"CloudShoppingList/customset"
 	"strconv"
 )
 
