@@ -79,7 +79,6 @@ func makeShoppingList(email string, items map[string]int) shopping_list.Shopping
 }
 
 func main() {
-	s_list := makeShoppingList("email", map[string]int{"item": 1})
-	fmt.Println(s_list.Items)
+	makeShoppingList("email", map[string]int{"item": 1})
 	push("email", "email.json")
 }

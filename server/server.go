@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -24,11 +25,20 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 
-		// Print received data
-		fmt.Printf("Received from client: %s\n", buffer[:n])
+		// parse message
+		message := string(buffer[:n])
+		messageParts := strings.Split(message, ",")
+		email := messageParts[0]
+		filename := messageParts[1]
+		command := messageParts[2]
+		fileContents := messageParts[3]
+		fmt.Println(email)
+		fmt.Println(filename)
+		fmt.Println(command)
+		fmt.Println(fileContents)
 
-		// Send the same data back to the client
-		_, err = conn.Write(buffer[:n])
+		// send response
+		_, err = conn.Write([]byte("Message received by server by email: " + email + " with filename: " + filename + " with command: " + command + "\n"))
 		if err != nil {
 			fmt.Println("Error writing:", err)
 			return
@@ -53,6 +63,7 @@ func main() {
 		sig := <-sigCh
 		fmt.Printf("Received signal: %v. Shutting down...\n", sig)
 		listener.Close()
+		os.Exit(0)
 	}()
 
 	fmt.Println("Server listening on localhost:8080")
@@ -60,10 +71,11 @@ func main() {
 	for {
 		// Accept a new connection
 		conn, err := listener.Accept()
-		if err != nil {
+		if conn != nil && err != nil {
 			fmt.Println("Error accepting connection:", err)
 			continue
 		}
+		defer conn.Close()
 
 		// Handle the connection in a new goroutine
 		go handleConnection(conn)
