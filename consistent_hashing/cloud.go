@@ -1,6 +1,7 @@
 package main
 
 import (
+	"CloudShoppingList/shopping_list"
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 type HashRing struct {
 	servers   []string
 	replicas  int
-	serverMap map[string]map[string]ShoppingList
+	serverMap map[string]map[string]shopping_list.ShoppingList
 	/*
 		serverMap:
 		{
@@ -42,7 +43,7 @@ type HashRing struct {
 func newHashRing(replicas int) *HashRing {
 	return &HashRing{
 		replicas:  replicas,
-		serverMap: make(map[string]map[string]ShoppingList),
+		serverMap: make(map[string]map[string]shopping_list.ShoppingList),
 	}
 }
 
@@ -51,7 +52,7 @@ func (hr *HashRing) addServer(server string) {
 	for i := 0; i < hr.replicas; i++ {
 		key := hashKey(fmt.Sprintf("%s-%d", server, i))
 		hr.servers = append(hr.servers, server)
-		hr.serverMap[key] = make(map[string]ShoppingList)
+		hr.serverMap[key] = make(map[string]shopping_list.ShoppingList)
 	}
 
 	sort.Strings(hr.servers)
@@ -91,22 +92,8 @@ func (hr *HashRing) getServer(key string) string {
 	return hr.servers[index]
 }
 
-func (hr *HashRing) addShoppingListToServer(shoppingList ShoppingList, server string) {
+func (hr *HashRing) addShoppingListToServer(shoppingList shopping_list.ShoppingList, server string) {
 	hr.serverMap[server]["shoppingList"+strconv.FormatInt(int64(len(hr.serverMap[server])), 2)] = shoppingList
-}
-
-type ShoppingList struct {
-	items map[string]uint64
-}
-
-func newShoppingList() ShoppingList {
-	return ShoppingList{
-		items: make(map[string]uint64),
-	}
-}
-
-func (sl *ShoppingList) addItem(item string, quantity uint64) {
-	sl.items[item] = quantity
 }
 
 func hashKey(key string) string {
