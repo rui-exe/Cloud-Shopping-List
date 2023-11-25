@@ -74,6 +74,29 @@ func (r *Ring) Get(key string) (string, error) {
 	return r.Nodes[i].Server, nil
 }
 
+func (r *Ring) Put(email string) (string, error) {
+	r.RLock()
+	defer r.RUnlock()
+
+	if len(r.Nodes) == 0 {
+		return "", fmt.Errorf("ring is empty")
+	}
+
+	searchfn := func(i int) bool {
+		return r.Nodes[i].HashId >= crc32.ChecksumIEEE([]byte(email))
+	}
+
+	i := sort.Search(r.Nodes.Len(), searchfn)
+	if i >= r.Nodes.Len() {
+		i = 0
+	}
+	fmt.Println("email: ", email)
+	fmt.Println("hash: ", crc32.ChecksumIEEE([]byte(email)))
+	fmt.Println("node: ", r.Nodes[i].Id)
+	fmt.Println("server: ", r.Nodes[i].Server)
+	return r.Nodes[i].Server, nil
+}
+
 func (r *Ring) PrintNodes() {
 	for _, node := range r.Nodes {
 		fmt.Printf("Node %s with hash %d is associated with server %s\n", node.Id, node.HashId, node.Server)
