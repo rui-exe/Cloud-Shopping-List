@@ -1,83 +1,85 @@
 package main
 
 import (
-	"fmt"
-	"net"
-	"os"
-	"os/signal"
-	"strings"
-	"syscall"
+    "fmt"
+    "net"
+    "os"
+    "os/signal"
+    "strings"
+    "syscall"
 )
 
 func handleConnection(conn net.Conn) {
-	defer conn.Close()
+    defer conn.Close()
 
-	buffer := make([]byte, 2048)
-	for {
-		// Read data from the client
-		n, err := conn.Read(buffer)
-		if err != nil {
-			if err.Error() == "EOF" {
-				fmt.Println("Client closed the connection.")
-			} else {
-				fmt.Println("Error reading:", err)
-			}
-			return
-		}
+    buffer := make([]byte, 2048)
+    for {
+        n, err := conn.Read(buffer)
+        if err != nil {
+            if err.Error() == "EOF" {
+                fmt.Println("Client closed the connection.")
+            } else {
+                fmt.Println("Error reading:", err)
+            }
+            return
+        }
 
-		// parse message
-		message := string(buffer[:n])
-		messageParts := strings.Split(message, ",")
-		email := messageParts[0]
-		filename := messageParts[1]
-		command := messageParts[2]
-		fileContents := messageParts[3]
-		fmt.Println(email)
-		fmt.Println(filename)
-		fmt.Println(command)
-		fmt.Println(fileContents)
+        message := string(buffer[:n])
+        messageParts := strings.Split(message, ",")
+        if len(messageParts) < 4 {
+            fmt.Println("Invalid message format.")
+            return
+        }
+        email := messageParts[0]
+        filename := messageParts[1]
+        command := messageParts[2]
+        fileContents := messageParts[3]
+        fmt.Println(email, filename, command, fileContents)
 
-		// send response
-		_, err = conn.Write([]byte("Message received by server by email: " + email + " with filename: " + filename + " with command: " + command + "\n"))
-		if err != nil {
-			fmt.Println("Error writing:", err)
-			return
-		}
-	}
+        _, err = conn.Write([]byte("Message received by server by email: " + email + " with filename: " + filename + " with command: " + command + "\n"))
+        if err != nil {
+            fmt.Println("Error writing:", err)
+            return
+        }
+    }
 }
 
 func main() {
-	// Listen for incoming connections on port 8080
-	listener, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		fmt.Println("Error listening:", err)
-		return
-	}
-	defer listener.Close()
+    listener, err := net.Listen("tcp", "localhost:8080")
+    if err != nil {
+        fmt.Println("Error listening:", err)
+        return
+    }
+    defer listener.Close()
 
-	// Handle graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		sig := <-sigCh
-		fmt.Printf("Received signal: %v. Shutting down...\n", sig)
-		listener.Close()
-		os.Exit(0)
-	}()
+    isShuttingDown := false
 
-	fmt.Println("Server listening on localhost:8080")
+    go func() {
+        sig := <-sigCh
+        fmt.Printf("Received signal: %v. Shutting down...\n", sig)
+        isShuttingDown = true
+        listener.Close()
+        os.Exit(0)
+    }()
 
-	for {
-		// Accept a new connection
-		conn, err := listener.Accept()
-		if conn != nil && err != nil {
-			fmt.Println("Error accepting connection:", err)
-			continue
-		}
-		defer conn.Close()
+    fmt.Println("Server listening on localhost:8080")
 
-		// Handle the connection in a new goroutine
-		go handleConnection(conn)
-	}
+    for {
+        if isShuttingDown {
+            break
+        }
+
+        conn, err := listener.Accept()
+        if err != nil {
+            if !isShuttingDown {
+                fmt.Println("Error accepting connection:", err)
+            }
+            continue
+        }
+
+        go handleConnection(conn)
+    }
 }
