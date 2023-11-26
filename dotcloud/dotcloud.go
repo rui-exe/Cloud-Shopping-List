@@ -7,7 +7,7 @@ import (
 
 type Pair struct {
 	Key   string
-	Value string
+	Value int
 }
 
 type DotCloud struct {
@@ -41,7 +41,7 @@ func (cs *DotCloud) Has(key string, value int) bool {
 	return exists
 }
 
-func (cs *DotCloud) Values() []Pair{} {
+func (cs *DotCloud) Values() []Pair {
 	values := make([]Pair, 0, len(cs.refs))
 	for _, value := range cs.refs {
 		values = append(values, value)
