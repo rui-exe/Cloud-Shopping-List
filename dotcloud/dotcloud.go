@@ -2,7 +2,6 @@ package dotcloud
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Pair struct {
