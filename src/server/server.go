@@ -17,39 +17,77 @@ func NewServer(port string) *Server {
 	return &Server{port: port}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnections(conn net.Conn) {
 	defer conn.Close()
 
 	buffer := make([]byte, 2048)
-	for {
-		n, err := conn.Read(buffer)
-		if err != nil {
-			if err.Error() == "EOF" {
-				fmt.Println("Client closed the connection.")
-			} else {
-				fmt.Println("Error reading:", err)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		if err.Error() == "EOF" {
+			fmt.Println("Client closed the connection.")
+		} else {
+			_, err = conn.Write([]byte("Error reading, please try again.\n"))
+			if err != nil {
+				fmt.Println("Error writing:", err)
 			}
+		}
+		return
+	}
+
+	message := string(buffer[:n])
+	messageParts := strings.Split(message, ",")
+	if len(messageParts) < 4 {
+		_, err = conn.Write([]byte("Invalid message format, please try again.\n"))
+		if err != nil {
+			fmt.Println("Error writing:", err)
+		}
+		return
+	}
+
+	email := messageParts[0]
+	filename := messageParts[1]
+	command := messageParts[2]
+	contents := messageParts[3]
+	fmt.Println(email, filename, command, contents)
+
+	switch command {
+	case "push":
+		// Write to file
+		file, err := os.Create("../list_storage/" + filename)
+		if err != nil {
+			fmt.Println("Error creating file:", err)
+			return
+		}
+		defer file.Close()
+
+		_, err = file.WriteString(string(contents))
+		if err != nil {
+			fmt.Println("Error writing to file:", err)
 			return
 		}
 
-		message := string(buffer[:n])
-		messageParts := strings.Split(message, ",")
-		if len(messageParts) < 4 {
-			fmt.Println("Invalid message format.")
-			return
-		}
-		email := messageParts[0]
-		filename := messageParts[1]
-		command := messageParts[2]
-		fileContents := messageParts[3]
-		fmt.Println(email, filename, command, fileContents)
-
-		_, err = conn.Write([]byte("Message received by server by email: " + email + " with filename: " + filename + " with command: " + command + "\n"))
+		// Send response to client
+		_, err = conn.Write([]byte("File successfully written.\n"))
 		if err != nil {
 			fmt.Println("Error writing:", err)
 			return
 		}
-	}
+
+	case "pull":
+		// Read from file
+		file_contents, err := os.ReadFile("../list_storage/" + filename)
+		if err != nil {
+			fmt.Println("Error reading file:", err)
+			return
+		}
+
+		// Send file to the client
+		_, err = conn.Write(file_contents)
+		if err != nil {
+			fmt.Println("Error writing:", err)
+			return
+		}
+	}	
 }
 
 func (s *Server) Run() {
@@ -88,7 +126,7 @@ func (s *Server) Run() {
 			continue
 		}
 
-		go handleConnection(conn)
+		go handleConnections(conn)
 	}
 }
 

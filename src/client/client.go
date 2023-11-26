@@ -2,10 +2,13 @@ package main
 
 import (
 	"CloudShoppingList/shopping_list"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 )
+
+// MESSAGES ARE ALL OF TYPE EMAIL, FILENAME(IF AVAILABLE, IF NOT JUST EMPTY STRING), OPERATION, CONTENTS
 
 func push(email string, filename string) {
 	// Connect to the server at localhost:8080
@@ -17,7 +20,9 @@ func push(email string, filename string) {
 	defer conn.Close()
 
 	//Read from File
-	file_contents, err := os.ReadFile("list_storage/" + filename)
+	file_contents, err := os.ReadFile("../list_storage/" + filename)
+
+	fmt.Println("File contents:", string(file_contents))
 
 	if err != nil {
 		fmt.Println("Error reading file:", err)
@@ -25,16 +30,17 @@ func push(email string, filename string) {
 	}
 
 	// Send a message to the server
-	message := email + "," + filename + "," + "push," + string(file_contents)
+	message := email + "," + filename + "," + "push," + hex.EncodeToString(file_contents[:])
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("Error writing:", err)
 		return
 	}
 
-	// Receive and print the response from the server
+	// Receive response from server
 	response := make([]byte, 1024)
 	n, err := conn.Read(response)
+
 	if err != nil {
 		fmt.Println("Error reading:", err)
 		return
@@ -42,7 +48,7 @@ func push(email string, filename string) {
 	fmt.Printf("Received from server: %s\n", response[:n])
 }
 
-func pull() {
+func pull(email string, filename string) {
 	// Connect to the server at localhost:8080
 	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -52,7 +58,7 @@ func pull() {
 	defer conn.Close()
 
 	// Send a message to the server
-	message := "pull"
+	message := email + "," + filename + "," + "pull," + ""
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("Error writing:", err)
@@ -81,4 +87,5 @@ func makeShoppingList(email string, items map[string]int) shopping_list.Shopping
 func main() {
 	makeShoppingList("email", map[string]int{"item": 1})
 	push("email", "email.json")
+	pull("email", "email.json")
 }

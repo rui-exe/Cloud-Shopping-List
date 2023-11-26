@@ -32,7 +32,7 @@ func (sl *ShoppingList) SaveToFile(filename string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile("list_storage/"+filename, data, 0644)
+	return os.WriteFile("../list_storage/"+filename, data, 0644)
 }
 
 func LoadFromFile(filename string) (*ShoppingList, error) {
