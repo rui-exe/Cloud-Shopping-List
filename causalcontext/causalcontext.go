@@ -1,13 +1,17 @@
 package causalcontext
 
 import (
-	"CloudShoppingList/customset"
-	"strconv"
+	"CloudShoppingList/dotcloud"
 )
 
 type CausalContext struct {
 	cc map[string]int
-	dc *customset.CustomSet
+	dc *dotcloud.DotCloud
+}
+
+type Pair struct {
+	Key   string
+	Value int
 }
 
 func NewCausalContext(cc map[string]int) *CausalContext {
@@ -17,73 +21,88 @@ func NewCausalContext(cc map[string]int) *CausalContext {
 
 	return &CausalContext{
 		cc: cc,
-		dc: customset.NewCustomSet(),
+		dc: dotcloud.NewCustomSet(),
 	}
 }
 
-func (ctx *CausalContext) DotIn(dot [2]string) bool {
-	key, value := dot[0], dot[1]
-	count, exists := ctx.cc[key]
-	return value <= count || ctx.dc.Has(dot)
+func (ctx *CausalContext) DotIn(dot Pair) bool {
+	key, value := dot.Key, dot.Value
+	_, exists := ctx.cc[key]
+	if (exists) {return true}
+	if (ctx.dc.Has(key, value)) {return true}
+	return false
 }
 
 func (ctx *CausalContext) Compact() *CausalContext {
-	// Compact DC to CC if possible
-	for _, dot := range ctx.dc.Values() {
-		key, value := dot[0], dot[1]
-		existing, exists := ctx.cc[key]
-		if !exists || existing < value {
-			ctx.cc[key] = value
+	flag := true
+	for flag {
+		flag = false
+		// Compact DC to CC if possible
+		for _, dot := range ctx.dc.Values() {
+			key, value := dot.Key, dot.Value
+			casual_context_value, exists := ctx.cc[key]
+			if !exists {
+				if (value == 1) {
+					ctx.cc[key] = value
+					ctx.dc.Delete(key, value)
+					flag = true
+				}
+			} else {
+				if (value == casual_context_value + 1) {
+					ctx.cc[key] = value
+					ctx.dc.Delete(key, value)
+					flag = true
+				} else  if (value <= casual_context_value) {
+					ctx.dc.Delete(key, value)
+				}
+			}
 		}
-		ctx.dc.Delete(dot)
 	}
 	return ctx
 }
 
-func (ctx *CausalContext) Next(id string) [2]string {
+func (ctx *CausalContext) Next(id string) Pair {
 	value, exists := ctx.cc[id]
 	if !exists {
 		value = 0
 	}
 	newValue := value + 1
-	return [2]string{id, strconv.Itoa(newValue)}
+	return Pair{Key: id, Value: newValue}
 }
 
-func (ctx *CausalContext) MakeDot(id string) [2]string {
+func (ctx *CausalContext) MakeDot(id string) Pair {
 	n := ctx.Next(id)
-	ctx.cc[n[0]] = n[1]
+	ctx.cc[id] = n.Value
 	return n
 }
 
-func (ctx *CausalContext) InsertDot(key, value string, compactNow bool) {
-	if value == "" {
-		value = "null"
-	}
-	ctx.dc.Add([2]string{key, value})
+func (ctx *CausalContext) InsertDot(key string, value int, compactNow bool) {
+
+	ctx.dc.Add(key, value)
 	if compactNow {
 		ctx.Compact()
 	}
 }
 
-func (ctx *CausalContext) Join(other *CausalContext) *CausalContext {
-	if other == nil {
-		other = NewCausalContext(nil)
-	} else {
-		other.Compact()
+
+func (ctx *CausalContext) Join(other *CausalContext) {
+	if other == ctx {
+		return 
 	}
+
+	for key, value := range ctx.cc {
+		other_value, exists := other.cc[key]
+		if exists {
+			ctx.cc[key] = max(value, other_value)
+		}
+	}
+
+	for key, value := range other.cc {
+		ctx.InsertDot(key, value, false)
+	} 
+
 	ctx.Compact()
 
-	result := make(map[string]int)
-
-	for k := range ctx.cc {
-		result[k] = max(ctx.cc[k], other.cc[k])
-	}
-
-	for k := range other.cc {
-		result[k] = max(ctx.cc[k], other.cc[k])
-	}
-
-	return NewCausalContext(result)
 }
 
 func max(a, b int) int {
