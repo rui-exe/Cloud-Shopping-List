@@ -116,6 +116,6 @@ func makeShoppingList(email string, items map[string]int) shopping_list.Shopping
 func main() {
 	newClient := NewClient("email")
 	makeShoppingList(newClient.email, map[string]int{"item": 1})
-	//newClient.push("email.json", 3, time.Second*2)
-	newClient.pull("email.json", 3, time.Second*2)
+	newClient.push("email.json", 3, time.Second*2)
+	//newClient.pull("email.json", 3, time.Second*2)
 }

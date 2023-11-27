@@ -76,11 +76,39 @@ func (s *Server) connectToLoadBalancerWithRetries(maxRetries int, retryInterval 
 }
 
 func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("Received shopping list put")
+	// Read the filename from the request body
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Split the message into filename and file_contents
+	parts := strings.Split(string(body), ",")
+	if len(parts) != 2 {
+		// If the format is invalid, respond with a bad request error
+		http.Error(writer, "Invalid request body format", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println("Parts:", parts)
+
+	// Extract filename and file_contents from the parts
+	filename := parts[0]
+	file_contents := parts[1]
+
+	// Update local server file
+	err = os.WriteFile("../list_storage/"+string(filename), []byte(file_contents), 0644)
+	if err != nil {
+		http.Error(writer, "Error writing file", http.StatusInternalServerError)
+		return
+	}
+
+	// Send OK status to the client
+	writer.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http.Request) {
-
 	// Read the filename from the request body
 	filename, err := io.ReadAll(request.Body)
 	if err != nil {
