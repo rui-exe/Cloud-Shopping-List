@@ -4,75 +4,104 @@ import (
 	"CloudShoppingList/shopping_list"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"os"
+	"strings"
+	"time"
+	"io"
+	"net/http"
 )
 
-// MESSAGES ARE ALL OF TYPE EMAIL, FILENAME(IF AVAILABLE, IF NOT JUST EMPTY STRING), OPERATION, CONTENTS
+type Client struct {
+	email string
+	loadBalancerIP string
+}
 
-func push(email string, filename string) {
-	// Connect to the server at localhost:8080
-	conn, err := net.Dial("tcp", "localhost:8080")
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		return
-	}
-	defer conn.Close()
+func NewClient(email string) *Client {
+	return &Client{email: email, loadBalancerIP: "localhost:8080"}
+}
 
-	//Read from File
+func (c *Client) push(filename string, maxRetries int, retryInterval time.Duration) int {
+
+	url := fmt.Sprintf("http://%s/putList", c.loadBalancerIP)
+
 	file_contents, err := os.ReadFile("../list_storage/" + filename)
 
 	fmt.Println("File contents:", string(file_contents))
 
 	if err != nil {
 		fmt.Println("Error reading file:", err)
-		return
+		return -1
 	}
 
-	// Send a message to the server
-	message := email + "," + filename + "," + "push," + hex.EncodeToString(file_contents[:])
-	_, err = conn.Write([]byte(message))
-	if err != nil {
-		fmt.Println("Error writing:", err)
-		return
+	for retry := 0; retry < maxRetries; retry++ {
+
+		body := strings.NewReader(fmt.Sprintf("%s,%s,%s", c.email, filename, hex.EncodeToString(file_contents[:])))
+
+		fmt.Println("Body:", body)
+
+		resp, err := http.Post(url, "text/plain", body)
+		if err != nil {
+			fmt.Printf("Error connecting to the server (retry %d/%d): %v\n", retry+1, maxRetries, err)
+			if retry == maxRetries-1 {
+				break
+			}
+			time.Sleep(retryInterval)
+			retryInterval *= 2
+			continue
+		}
+
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Println(err)
+			}
+		}(resp.Body)
+
+		if resp.StatusCode == http.StatusOK {
+			fmt.Println("Pushed to the server successfully.")
+			return resp.StatusCode
+		}
 	}
 
-	// Receive response from server
-	response := make([]byte, 1024)
-	n, err := conn.Read(response)
-
-	if err != nil {
-		fmt.Println("Error reading:", err)
-		return
-	}
-	fmt.Printf("Received from server: %s\n", response[:n])
+	fmt.Printf("Max retries reached. Could not connect to the load balancer after %d attempts.\n", maxRetries)
+	return http.StatusInternalServerError
 }
 
-func pull(email string, filename string) {
-	// Connect to the server at localhost:8080
-	conn, err := net.Dial("tcp", "localhost:8080")
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		return
-	}
-	defer conn.Close()
+func (c *Client) pull(filename string, maxRetries int, retryInterval time.Duration) int {
 
-	// Send a message to the server
-	message := email + "," + filename + "," + "pull," + ""
-	_, err = conn.Write([]byte(message))
-	if err != nil {
-		fmt.Println("Error writing:", err)
-		return
+	url := fmt.Sprintf("http://%s/getList", c.loadBalancerIP)
+
+	for retry := 0; retry < maxRetries; retry++ {
+
+		body := strings.NewReader(fmt.Sprintf("%s,%s", c.email, filename))
+
+		resp, err := http.Post(url, "text/plain", body)
+		if err != nil {
+			fmt.Printf("Error connecting to the server (retry %d/%d): %v\n", retry+1, maxRetries, err)
+			if retry == maxRetries-1 {
+				break
+			}
+			time.Sleep(retryInterval)
+			retryInterval *= 2
+			continue
+		}
+
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Println(err)
+			}
+		}(resp.Body)
+
+		if resp.StatusCode == http.StatusOK {
+			fmt.Println("Pulled from the server successfully.")
+			return resp.StatusCode
+		}
+		fmt.Printf("Error pulling from the server: %d.\n", resp.StatusCode)
 	}
 
-	// Receive and print the response from the server
-	response := make([]byte, 1024)
-	n, err := conn.Read(response)
-	if err != nil {
-		fmt.Println("Error reading:", err)
-		return
-	}
-	fmt.Printf("Received from server: %s\n", response[:n])
+	fmt.Printf("Max retries reached. Could not connect to the load balancer after %d attempts.\n", maxRetries)
+	return http.StatusInternalServerError
 }
 
 func makeShoppingList(email string, items map[string]int) shopping_list.ShoppingList {
@@ -85,7 +114,8 @@ func makeShoppingList(email string, items map[string]int) shopping_list.Shopping
 }
 
 func main() {
-	makeShoppingList("email", map[string]int{"item": 1})
-	push("email", "email.json")
-	pull("email", "email.json")
+	newClient := NewClient("email")
+	makeShoppingList(newClient.email, map[string]int{"item": 1})
+	//newClient.push("email.json", 3, time.Second*2)
+	newClient.pull("email.json", 3, time.Second*2)
 }

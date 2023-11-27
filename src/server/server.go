@@ -2,136 +2,115 @@ package main
 
 import (
 	"fmt"
-	"net"
+	"github.com/google/uuid"
+	"io"
+	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
+	"time"
 )
 
 type Server struct {
-	port string
+	port           string
+	nodeID         string
+	loadBalancerIP string
 }
 
 func NewServer(port string) *Server {
-	return &Server{port: port}
-}
-
-func handleConnections(conn net.Conn) {
-	defer conn.Close()
-
-	buffer := make([]byte, 2048)
-	n, err := conn.Read(buffer)
-	if err != nil {
-		if err.Error() == "EOF" {
-			fmt.Println("Client closed the connection.")
-		} else {
-			_, err = conn.Write([]byte("Error reading, please try again.\n"))
-			if err != nil {
-				fmt.Println("Error writing:", err)
-			}
-		}
-		return
-	}
-
-	message := string(buffer[:n])
-	messageParts := strings.Split(message, ",")
-	if len(messageParts) < 4 {
-		_, err = conn.Write([]byte("Invalid message format, please try again.\n"))
-		if err != nil {
-			fmt.Println("Error writing:", err)
-		}
-		return
-	}
-
-	email := messageParts[0]
-	filename := messageParts[1]
-	command := messageParts[2]
-	contents := messageParts[3]
-	fmt.Println(email, filename, command, contents)
-
-	switch command {
-	case "push":
-		// Write to file
-		file, err := os.Create("../list_storage/" + filename)
-		if err != nil {
-			fmt.Println("Error creating file:", err)
-			return
-		}
-		defer file.Close()
-
-		_, err = file.WriteString(string(contents))
-		if err != nil {
-			fmt.Println("Error writing to file:", err)
-			return
-		}
-
-		// Send response to client
-		_, err = conn.Write([]byte("File successfully written.\n"))
-		if err != nil {
-			fmt.Println("Error writing:", err)
-			return
-		}
-
-	case "pull":
-		// Read from file
-		file_contents, err := os.ReadFile("../list_storage/" + filename)
-		if err != nil {
-			fmt.Println("Error reading file:", err)
-			return
-		}
-
-		// Send file to the client
-		_, err = conn.Write(file_contents)
-		if err != nil {
-			fmt.Println("Error writing:", err)
-			return
-		}
-	}	
+	// generate a random node uuid
+	return &Server{port: port, nodeID: uuid.New().String(), loadBalancerIP: "localhost:8080"}
 }
 
 func (s *Server) Run() {
-	listener, err := net.Listen("tcp", "localhost:"+s.port)
-	if err != nil {
-		fmt.Println("Error listening:", err)
+	// Print the node ID
+	fmt.Println("Node ID:", s.nodeID)
+	// Connect to the load balancer with retries
+	status := s.connectToLoadBalancerWithRetries(3, time.Second*2)
+	if status != http.StatusOK {
+		fmt.Println("Exiting...")
 		return
 	}
-	defer listener.Close()
+	// await incoming http messages
+	http.HandleFunc("/putList", s.HandleShoppingListPut)
+	fmt.Println("Server listening on port " + s.port)
+	err := http.ListenAndServe(":"+s.port, nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+func (s *Server) connectToLoadBalancerWithRetries(maxRetries int, retryInterval time.Duration) int {
+	url := fmt.Sprintf("http://%s/connect-node", s.loadBalancerIP)
 
-	isShuttingDown := false
+	for retry := 0; retry < maxRetries; retry++ {
+		// Create a buffer with the node ID and server port
+		body := strings.NewReader(fmt.Sprintf("%s,%s", s.nodeID, "localhost:"+s.port))
 
-	go func() {
-		sig := <-sigCh
-		fmt.Printf("Received signal: %v. Shutting down...\n", sig)
-		isShuttingDown = true
-		listener.Close()
-		os.Exit(0)
-	}()
-
-	fmt.Println("Server listening on localhost:" + s.port)
-
-	for {
-		if isShuttingDown {
-			break
-		}
-
-		conn, err := listener.Accept()
+		resp, err := http.Post(url, "text/plain", body)
 		if err != nil {
-			if !isShuttingDown {
-				fmt.Println("Error accepting connection:", err)
+			fmt.Printf("Error connecting to the load balancer (retry %d/%d): %v\n", retry+1, maxRetries, err)
+			if retry == maxRetries-1 {
+				break
 			}
+			time.Sleep(retryInterval)
+			retryInterval *= 2
 			continue
 		}
 
-		go handleConnections(conn)
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Println(err)
+			}
+		}(resp.Body)
+
+		if resp.StatusCode == http.StatusOK {
+			fmt.Println("Connected to the load balancer successfully.")
+			return resp.StatusCode
+		}
+	}
+
+	fmt.Printf("Max retries reached. Could not connect to the load balancer after %d attempts.\n", maxRetries)
+	return http.StatusInternalServerError
+}
+
+func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http.Request) {
+	fmt.Println("Received shopping list put")
+}
+
+func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http.Request) {
+
+	// Read the filename from the request body
+	filename, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Read the file contents
+	file_contents, err := os.ReadFile("../list_storage/" + string(filename))
+	if err != nil {
+		http.Error(writer, "Error reading file", http.StatusInternalServerError)
+		return
+	}
+
+	// Send file to the client
+	_, err = writer.Write(file_contents)
+	if err != nil {
+		http.Error(writer, "Error writing file", http.StatusInternalServerError)
+		return
 	}
 }
 
 func main() {
-	// create a server with port specified in command line
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: ./server <port>")
+		os.Exit(1)
+	}
+	// create an HTTP server with the specified port
 	server := NewServer(os.Args[1])
+	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
+	http.HandleFunc("/getListServer", server.HandleShoppingListGet)
 	server.Run()
 }
