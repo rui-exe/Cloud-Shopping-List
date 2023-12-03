@@ -1,24 +1,50 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
-	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Server struct {
 	port           string
+	name           string
 	nodeID         string
 	loadBalancerIP string
+	db             *sql.DB
 }
 
-func NewServer(port string) *Server {
+func NewServer(port string, name string) *Server {
 	// generate a random node uuid
-	return &Server{port: port, nodeID: uuid.New().String(), loadBalancerIP: "localhost:8080"}
+	// open SQLite database
+	db, err := sql.Open("sqlite3", fmt.Sprintf("../node_storage/%s.db", name))
+	if err != nil {
+		fmt.Println("Error opening database:", err)
+		os.Exit(1)
+	}
+	fmt.Println("Opened database successfully")
+
+	// create tables if not exists
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS shopping_lists (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL,
+			shopping_list BLOB NOT NULL
+		);
+	`)
+	if err != nil {
+		fmt.Println("Error creating table:", err)
+		os.Exit(1)
+	}
+
+	return &Server{port: port, name: name, nodeID: uuid.New().String(), loadBalancerIP: "localhost:8080", db: db}
 }
 
 func (s *Server) Run() {
@@ -76,68 +102,20 @@ func (s *Server) connectToLoadBalancerWithRetries(maxRetries int, retryInterval 
 }
 
 func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http.Request) {
-	// Read the filename from the request body
-	body, err := io.ReadAll(request.Body)
-	if err != nil {
-		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Split the message into filename and file_contents
-	parts := strings.Split(string(body), ",")
-	if len(parts) != 2 {
-		// If the format is invalid, respond with a bad request error
-		http.Error(writer, "Invalid request body format", http.StatusBadRequest)
-		return
-	}
-
-	fmt.Println("Parts:", parts)
-
-	// Extract filename and file_contents from the parts
-	filename := parts[0]
-	file_contents := parts[1]
-
-	// Update local server file
-	err = os.WriteFile("../list_storage/"+string(filename), []byte(file_contents), 0644)
-	if err != nil {
-		http.Error(writer, "Error writing file", http.StatusInternalServerError)
-		return
-	}
-
-	// Send OK status to the client
-	writer.WriteHeader(http.StatusOK)
+	// TODO: implement
 }
 
 func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http.Request) {
-	// Read the filename from the request body
-	filename, err := io.ReadAll(request.Body)
-	if err != nil {
-		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Read the file contents
-	file_contents, err := os.ReadFile("../list_storage/" + string(filename))
-	if err != nil {
-		http.Error(writer, "Error reading file", http.StatusInternalServerError)
-		return
-	}
-
-	// Send file to the client
-	_, err = writer.Write(file_contents)
-	if err != nil {
-		http.Error(writer, "Error writing file", http.StatusInternalServerError)
-		return
-	}
+	//TODO: implement
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: ./server <port>")
-		os.Exit(1)
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: ./server <port> <name>")
+		return
 	}
 	// create an HTTP server with the specified port
-	server := NewServer(os.Args[1])
+	server := NewServer(os.Args[1], os.Args[2])
 	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
 	http.HandleFunc("/getListServer", server.HandleShoppingListGet)
 	server.Run()
