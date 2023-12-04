@@ -156,7 +156,10 @@ func main() {
 	var email string
 	fmt.Scanln(&email)
 	client := NewClient(email)
-	for {
-		client.menu()
+	makeShoppingList(client.email)
+	pushStatus := client.push(client.email+".json", 3, time.Second*2)
+	if pushStatus != http.StatusOK {
+		fmt.Println("Exiting...")
+		return
 	}
 }

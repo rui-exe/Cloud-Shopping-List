@@ -23,7 +23,7 @@ func (lb *LoadBalancer) AddNode(id, server string) {
 	lb.Ring.AddNode(id, server)
 }
 
-func (lb *LoadBalancer) Put(email string) (string, error) {
+func (lb *LoadBalancer) Put(email string) ([]string, error) {
 	return lb.Ring.Put(email)
 }
 
@@ -83,101 +83,36 @@ func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Req
 	fmt.Println(email, filename, contents)
 
 	// Get the node ID for the email
-	nodeID, err := lb.Put(email)
+	servers, err := lb.Put(email)
 	if err != nil {
 		// If there is an error getting the node ID, respond with an internal server error
 		http.Error(w, "Error getting node ID", http.StatusInternalServerError)
 		return
 	}
 
-	// Get the server address for the node ID
-	serverAddress, _ := lb.Ring.Get(nodeID)
-	fmt.Println("Server address:", serverAddress)
-	
-	// Connect to the server
-	resp, err := http.Post("http://"+serverAddress+"/putListServer", "text/plain", strings.NewReader(fmt.Sprintf("%s,%s", filename, contents)))
-	if err != nil {
-		http.Error(w, "Error connecting to server:", http.StatusInternalServerError)
-		return
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+	// Send the file to all servers
+	for _, serverAddress := range servers {
+		// Connect to the server
+		resp, err := http.Post("http://"+serverAddress+"/putListServer", "text/plain", strings.NewReader(email+","+contents))
 		if err != nil {
-			http.Error(w, "Error closing connection to server:", http.StatusInternalServerError)
+			http.Error(w, "Error connecting to server:", http.StatusInternalServerError)
+			return
 		}
-	}(resp.Body)
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				http.Error(w, "Error closing connection to server:", http.StatusInternalServerError)
+			}
+		}(resp.Body)
+	}
 
 	// Send a success response (HTTP 200 OK) to the client
 	w.WriteHeader(http.StatusOK)
 }
 
-
 func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Request) {
-
-	// Read the request body
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		// If there is an error reading the body, respond with a bad request error
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
-		return
-	}
-
-	// Split the body into parts using commas
-	parts := strings.Split(string(body), ",")
-	fmt.Println("Parts:", parts)
-
-	// Check if the number of parts is not equal to 2
-	if len(parts) != 2 {
-		// If the format is invalid, respond with a bad request error
-		http.Error(w, "Invalid request body format", http.StatusBadRequest)
-		return
-	}
-
-	// Extract email and filename from the parts
-	email := parts[0]
-	filename := parts[1]
-	fmt.Println(email, filename)
-
-	// Get the node ID for the email
-	nodeID, err := lb.Put(email)
-	if err != nil {
-		// If there is an error getting the node ID, respond with an internal server error
-		http.Error(w, "Error getting node ID", http.StatusInternalServerError)
-		return
-	}
-
-	// Get the server address for the node ID
-	serverAddress, _ := lb.Ring.Get(nodeID)
-	fmt.Println("Server address:", serverAddress)
-	
-	// Connect to the server
-	resp, err := http.Post("http://"+serverAddress+"/getListServer", "text/plain", strings.NewReader(filename))
-	if err != nil {
-		http.Error(w, "Error connecting to server:", http.StatusInternalServerError)
-		return
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			http.Error(w, "Error closing connection to server:", http.StatusInternalServerError)
-		}
-	}(resp.Body)
-
-	if resp.StatusCode == http.StatusOK {
-		// Read the file contents from the response from the server
-		file_contents, err := io.ReadAll(resp.Body)
-		if err != nil {
-			http.Error(w, "Error reading file", http.StatusInternalServerError)
-			return
-		}
-
-		// Send file to the client
-		w.Write(file_contents)
-		return
-	}
-	http.Error(w, "Error reading file", http.StatusInternalServerError)
+	// TODO: implement
 }
-
 
 func main() {
 	loadBalancer := NewLoadBalancer()

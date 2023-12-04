@@ -102,7 +102,31 @@ func (s *Server) connectToLoadBalancerWithRetries(maxRetries int, retryInterval 
 }
 
 func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http.Request) {
-	// TODO: implement
+	// split the request body into email and shopping list
+	fmt.Println("Handling shopping list put")
+	fmt.Println("")
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
+	parts := strings.Split(string(body), ",")
+	if len(parts) != 2 {
+		http.Error(writer, "Invalid request body format", http.StatusBadRequest)
+		return
+	}
+	email := parts[0]
+	shoppingList := parts[1]
+	// insert the shopping list into the database
+	_, err = s.db.Exec("INSERT INTO shopping_lists (email, shopping_list) VALUES (?, ?)", email, shoppingList)
+	if err != nil {
+		http.Error(writer, "Error inserting shopping list into database", http.StatusInternalServerError)
+		return
+	}
+	// send a success response to the load balancer
+	writer.WriteHeader(http.StatusOK)
+	fmt.Println("Successfully inserted shopping list into database")
+
 }
 
 func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http.Request) {
