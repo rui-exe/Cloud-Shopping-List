@@ -37,7 +37,6 @@ func (ctx *CausalContext) Compact() *CausalContext {
 	flag := true
 	for flag {
 		flag = false
-		// Compact DC to CC if possible
 		for _, dot := range ctx.dc.Values() {
 			key, value := dot.Key, dot.Value
 			casual_context_value, exists := ctx.cc[key]
@@ -82,6 +81,14 @@ func (ctx *CausalContext) InsertDot(key string, value int, compactNow bool) {
 	if compactNow {
 		ctx.Compact()
 	}
+}
+
+func (ctx *CausalContext) Current(id string) int {
+	value, exists := ctx.cc[id]
+	if !exists {
+		return 0
+	}
+	return value
 }
 
 
