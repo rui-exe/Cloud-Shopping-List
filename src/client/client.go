@@ -4,15 +4,15 @@ import (
 	"CloudShoppingList/shopping_list"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
-	"io"
-	"net/http"
 )
 
 type Client struct {
-	email string
+	email          string
 	loadBalancerIP string
 }
 
@@ -104,18 +104,59 @@ func (c *Client) pull(filename string, maxRetries int, retryInterval time.Durati
 	return http.StatusInternalServerError
 }
 
-func makeShoppingList(email string, items map[string]int) shopping_list.ShoppingList {
+func makeShoppingList(email string) {
 	shoppingList := shopping_list.NewShoppingList(email)
-	for item, quantity := range items {
-		shoppingList.AddItem(item, quantity)
-	}
+	shoppingList.AddItem("Milk", 2)
+	// store it locally in the list_storage folder
+	fmt.Println("Saving shopping list locally...")
 	shoppingList.SaveToFile(email + ".json")
-	return *shoppingList
+}
+
+func (c *Client) menu() {
+	fmt.Println("")
+	fmt.Println("Welcome to the shopping list app, " + c.email)
+	fmt.Println("1. Make shopping list")
+	fmt.Println("2. Push shopping list")
+	fmt.Println("3. Pull shopping list")
+	fmt.Println("4. Exit")
+	fmt.Println("")
+	// receive input
+	fmt.Print("Enter your choice: ")
+	var choice int
+	fmt.Scanln(&choice)
+	switch choice {
+	case 1:
+		fmt.Println("")
+		fmt.Println("Do you want the list associated with your email? (y/n)")
+		var answer string
+		fmt.Scanln(&answer)
+		if answer == "n" {
+			fmt.Print("Enter the email of the list you want to make: ")
+			var email string
+			fmt.Scanln(&email)
+			fmt.Println("Making shopping list for", email+"...")
+			makeShoppingList(email)
+		}
+		if answer == "y" {
+			makeShoppingList(c.email)
+		}
+	case 2:
+		break
+	case 3:
+		break
+	case 4:
+		os.Exit(0)
+	default:
+		fmt.Println("Invalid choice")
+	}
 }
 
 func main() {
-	newClient := NewClient("email")
-	makeShoppingList(newClient.email, map[string]int{"item": 1})
-	newClient.push("email.json", 3, time.Second*2)
-	//newClient.pull("email.json", 3, time.Second*2)
+	fmt.Print("Enter your email: ")
+	var email string
+	fmt.Scanln(&email)
+	client := NewClient(email)
+	for {
+		client.menu()
+	}
 }
