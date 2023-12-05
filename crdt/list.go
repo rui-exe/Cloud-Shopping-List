@@ -59,7 +59,7 @@ func (list *List) Remove(key string) {
 
 func (DotStore *DotStore) update(replicaID string, change Counter, cc *causalcontext.CausalContext) {
 	version := -1
-	for dot, _ := range DotStore.data {
+	for dot := range DotStore.data {
 		if (dot.ReplicaID == replicaID) {
 			version = dot.Counter
 		}
@@ -126,7 +126,7 @@ func (list *List) join (other *List) {
 
 	for key, dotStore := range originalData {
 		if _, exists := other.data[key]; !exists {
-			for dot, _ := range dotStore.data {
+			for dot := range dotStore.data {
 				if (dot.Counter <= other.cc.Current(dot.ReplicaID)) {
 					list.data[key].remove(dot)
 				}
@@ -141,7 +141,7 @@ func (list *List) join (other *List) {
 }
 
 func (DotStore *DotStore) getDot (){
-	for dot, _ := range DotStore.data {
+	for dot := range DotStore.data {
 		print(dot.ReplicaID)
 		print(dot.Counter)
 		println("Here")
@@ -171,19 +171,29 @@ func main() {
 	list1.Increment("friend")
 	list1.Increment("friend")
 	list1.Increment("newItem")
-	list1.Increment("newItem2")
+	// list1.Increment("newItem2")
+
     list2 := NewList("2")
 	list2.join(list1)
+
 	printList(list1)
 	printList(list2)
+
 	list2.Remove("friend")
+	list2.Increment("newItem2")
+	println("Remove friend from list2 and add newItem2:")
 	printList(list2)
+
 	list1.Increment("friend")
 	list1.Increment("friend")
 	list1.Increment("friend")
+	println("Add 3 friend to list1:")
+	printList(list1)
 	list1.Decrement("friend")
+	println("Remove 1 friend from list1:")
+	printList(list1)
 	list1.join(list2)
-	println(list1.data["friend"].value())
+
 	printList(list1)
 	println()	
 }
