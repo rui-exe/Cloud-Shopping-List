@@ -1,0 +1,6 @@
+.idea/*
+.idea/
+.idea
+node_storage/*.db
+list_storage/*
+!list_storage/README.md
