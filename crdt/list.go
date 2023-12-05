@@ -6,8 +6,8 @@ import (
 
 // ORMap represents an Observed-Remove Map.
 type List struct {
-	data map[string]*DotStore
-	cc *causalcontext.CausalContext
+	data      map[string]*DotStore
+	cc        *causalcontext.CausalContext
 	replicaID string
 }
 
@@ -22,7 +22,7 @@ type Counter struct {
 
 type Dot struct {
 	ReplicaID string
-	Counter int
+	Counter   int
 }
 
 func NewList(id string) *List {
@@ -42,14 +42,14 @@ func (list *List) Increment(key string) {
 	if list.data[key] == nil {
 		list.data[key] = &DotStore{data: make(map[Dot]Counter)}
 	}
-	list.data[key].update(list.replicaID , Counter{Positive:1, Negative:0}, list.cc)
+	list.data[key].update(list.replicaID, Counter{Positive: 1, Negative: 0}, list.cc)
 }
 
 func (list *List) Decrement(key string) {
 	if list.data[key] == nil {
 		list.data[key] = &DotStore{data: make(map[Dot]Counter)}
 	}
-	list.data[key].update(list.replicaID , Counter{Positive:0, Negative:1}, list.cc)
+	list.data[key].update(list.replicaID, Counter{Positive: 0, Negative: 1}, list.cc)
 }
 
 func (list *List) Remove(key string) {
@@ -59,32 +59,32 @@ func (list *List) Remove(key string) {
 func (DotStore *DotStore) update(replicaID string, change Counter, cc *causalcontext.CausalContext) {
 	version := -1
 	for dot := range DotStore.data {
-		if (dot.ReplicaID == replicaID) {
+		if dot.ReplicaID == replicaID {
 			version = dot.Counter
 		}
 	}
 	currentCasualContexValue := cc.Current(replicaID)
 
-	if (currentCasualContexValue != version) {
+	if currentCasualContexValue != version {
 		DotStore.fresh(replicaID, cc)
 		currentCasualContexValue = cc.Current(replicaID)
 	}
 
-	counter := DotStore.data[Dot{ReplicaID:replicaID, Counter:currentCasualContexValue}]
+	counter := DotStore.data[Dot{ReplicaID: replicaID, Counter: currentCasualContexValue}]
 	counter.Positive += change.Positive
 	counter.Negative += change.Negative
-	DotStore.data[Dot{ReplicaID:replicaID, Counter:currentCasualContexValue}] = counter
+	DotStore.data[Dot{ReplicaID: replicaID, Counter: currentCasualContexValue}] = counter
 }
 
 func (DotStore *DotStore) fresh(replicaID string, cc *causalcontext.CausalContext) {
 	pair := cc.Next(replicaID)
-	DotStore.data[Dot{ReplicaID:pair.Key, Counter:pair.Value}] = Counter{Positive:0, Negative:0}
+	DotStore.data[Dot{ReplicaID: pair.Key, Counter: pair.Value}] = Counter{Positive: 0, Negative: 0}
 	cc.MakeDot(pair.Key)
 }
 
 func (DotStore *DotStore) value() int {
 	value := 0
-	if (len(DotStore.data) == 0) {
+	if len(DotStore.data) == 0 {
 		return value
 	}
 	for _, counter := range DotStore.data {
@@ -93,15 +93,15 @@ func (DotStore *DotStore) value() int {
 	return value
 }
 
-func (list *List) join (other *List) {
+func (list *List) join(other *List) {
 	originalData := make(map[string]*DotStore)
-    for key, dotStore := range list.data {
-        newDotStore := &DotStore{data: make(map[Dot]Counter)}
-        for dot, counter := range dotStore.data {
-            newDotStore.data[dot] = counter
-        }
-        originalData[key] = newDotStore
-    }
+	for key, dotStore := range list.data {
+		newDotStore := &DotStore{data: make(map[Dot]Counter)}
+		for dot, counter := range dotStore.data {
+			newDotStore.data[dot] = counter
+		}
+		originalData[key] = newDotStore
+	}
 
 	for key, dotStore := range other.data {
 		if _, exists := list.data[key]; exists {
@@ -109,37 +109,37 @@ func (list *List) join (other *List) {
 				if _, exists := list.data[key].data[dot]; exists {
 					list.data[key].data[dot] = max(list.data[key].data[dot], counter)
 				} else {
-					if (dot.Counter > list.cc.Current(dot.ReplicaID)) {
+					if dot.Counter > list.cc.Current(dot.ReplicaID) {
 						list.data[key].add(dot, counter)
 					}
 				}
 			}
 		} else {
 			newDotStore := &DotStore{data: make(map[Dot]Counter)}
-            for dot, counter := range dotStore.data {
-                newDotStore.data[dot] = counter
-            }
-            list.data[key] = newDotStore
+			for dot, counter := range dotStore.data {
+				newDotStore.data[dot] = counter
+			}
+			list.data[key] = newDotStore
 		}
 	}
 
 	for key, dotStore := range originalData {
 		if _, exists := other.data[key]; !exists {
 			for dot := range dotStore.data {
-				if (dot.Counter <= other.cc.Current(dot.ReplicaID)) {
+				if dot.Counter <= other.cc.Current(dot.ReplicaID) {
 					list.data[key].remove(dot)
 				}
 			}
 		}
 	}
-	
+
 	list.cc.Join(other.cc)
 	for _, dotStore := range other.data {
 		dotStore.fresh(other.replicaID, other.cc)
 	}
 }
 
-func (DotStore *DotStore) getDot (){
+func (DotStore *DotStore) getDot() {
 	for dot := range DotStore.data {
 		print(dot.ReplicaID)
 		print(dot.Counter)
@@ -172,7 +172,7 @@ func main() {
 	list1.Increment("newItem")
 	// list1.Increment("newItem2")
 
-    list2 := NewList("2")
+	list2 := NewList("2")
 	list2.join(list1)
 
 	printList(list1)
@@ -194,18 +194,16 @@ func main() {
 	list1.join(list2)
 
 	printList(list1)
-	println()	
+	println()
 }
 
 func max(c1 Counter, c2 Counter) Counter {
-	return Counter{Positive:maxInt(c1.Positive, c2.Positive), Negative:maxInt(c1.Negative, c2.Negative)}
+	return Counter{Positive: maxInt(c1.Positive, c2.Positive), Negative: maxInt(c1.Negative, c2.Negative)}
 }
 
 func maxInt(i1 int, i2 int) int {
-	if (i1 > i2) {
+	if i1 > i2 {
 		return i1
-	} 
+	}
 	return i2
 }
-
-

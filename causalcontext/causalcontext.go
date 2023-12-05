@@ -28,8 +28,12 @@ func NewCausalContext(cc map[string]int) *CausalContext {
 func (ctx *CausalContext) DotIn(dot Pair) bool {
 	key, value := dot.Key, dot.Value
 	_, exists := ctx.cc[key]
-	if (exists) {return true}
-	if (ctx.dc.Has(key, value)) {return true}
+	if exists {
+		return true
+	}
+	if ctx.dc.Has(key, value) {
+		return true
+	}
 	return false
 }
 
@@ -41,17 +45,17 @@ func (ctx *CausalContext) Compact() *CausalContext {
 			key, value := dot.Key, dot.Value
 			casual_context_value, exists := ctx.cc[key]
 			if !exists {
-				if (value == 1) {
+				if value == 1 {
 					ctx.cc[key] = value
 					ctx.dc.Delete(key, value)
 					flag = true
 				}
 			} else {
-				if (value == casual_context_value + 1) {
+				if value == casual_context_value+1 {
 					ctx.cc[key] = value
 					ctx.dc.Delete(key, value)
 					flag = true
-				} else  if (value <= casual_context_value) {
+				} else if value <= casual_context_value {
 					ctx.dc.Delete(key, value)
 				}
 			}
@@ -90,7 +94,6 @@ func (ctx *CausalContext) Current(id string) int {
 	return value
 }
 
-
 func (ctx *CausalContext) Join(other *CausalContext) {
 	if other == ctx {
 		return
@@ -105,7 +108,7 @@ func (ctx *CausalContext) Join(other *CausalContext) {
 
 	for key, value := range other.cc {
 		ctx.InsertDot(key, value, false)
-	} 
+	}
 	ctx.Compact()
 }
 
