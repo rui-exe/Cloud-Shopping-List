@@ -197,20 +197,20 @@ func (list *List) init() {
 	gob.Register(&Dot{})
 }
 
-func (list *List) SaveToFile(filename string) {
+func (list *List) SaveToFile(filename string, clientID string) {
 	list.init()
 	data := list.ToGOB64()
 	fmt.Println("Saving list to file...")
-	err := os.WriteFile("../list_storage/"+filename, []byte(data), 0644)
+	err := os.WriteFile("../list_storage/"+clientID+"/"+filename, []byte(data), 0644)
 	if err != nil {
 		fmt.Println("Error saving list to file:", err)
 	}
 	fmt.Println("Saved list to file successfully")
 }
 
-func LoadFromFile(filename string) *List {
+func LoadFromFile(filename string, clientID string) *List {
 	list := &List{}
-	data, err := os.ReadFile("../list_storage/" + filename)
+	data, err := os.ReadFile("../list_storage/" + clientID + "/" + filename)
 	if err != nil {
 		fmt.Println("Error loading list from file:", err)
 	}

@@ -29,6 +29,10 @@ func (lb *LoadBalancer) Put(email string) ([]string, error) {
 	return lb.Ring.Put(email)
 }
 
+func (lb *LoadBalancer) Get(email string) (string, error) {
+	return lb.Ring.Get(email)
+}
+
 func (lb *LoadBalancer) HandleNodeConnection(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received node connection")
 
@@ -166,7 +170,40 @@ func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Req
 }
 
 func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement
+	email := strings.TrimPrefix(r.URL.Path, "/list/")
+	fmt.Println("Email:", email)
+
+	// Get the node ID for the email
+	server, err := lb.Get(email)
+	if err != nil {
+		// If there is an error getting the node ID, respond with an internal server error
+		http.Error(w, "Error getting node ID", http.StatusInternalServerError)
+		return
+	}
+
+	// Send the request to the server
+	resp, err := http.Get("http://" + server + "/getListServer/" + email)
+	if err != nil {
+		http.Error(w, "Error sending request to server", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check the response status code
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "Error getting shopping list from server", http.StatusInternalServerError)
+		return
+	}
+
+	// Copy the response body to the client
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		http.Error(w, "Error copying response body to client", http.StatusInternalServerError)
+		return
+	}
+
+	// Send a success response (HTTP 200 OK) to the client
+	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
@@ -175,7 +212,7 @@ func main() {
 	// Set up HTTP handler for load balancer
 	http.HandleFunc("/connect-node", loadBalancer.HandleNodeConnection)
 	http.HandleFunc("/putList", loadBalancer.HandleShoppingListPut)
-	http.HandleFunc("/getList", loadBalancer.HandleShoppingListGet)
+	http.HandleFunc("/list/", loadBalancer.HandleShoppingListGet)
 	// Start the load balancer on port 8080
 	fmt.Println("Load balancer listening on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
