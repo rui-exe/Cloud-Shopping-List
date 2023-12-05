@@ -35,7 +35,6 @@ func NewList(id string) *List {
 	for key := range list.data {
 		list.data[key] = &DotStore{data: make(map[Dot]Counter)}
 	}
-
 	return list
 }
 
@@ -205,9 +204,8 @@ func max(c1 Counter, c2 Counter) Counter {
 func maxInt(i1 int, i2 int) int {
 	if (i1 > i2) {
 		return i1
-	} else {
-		return i2
-	}
+	} 
+	return i2
 }
 
 
