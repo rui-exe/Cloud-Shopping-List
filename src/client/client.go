@@ -1,7 +1,7 @@
 package main
 
 import (
-	"CloudShoppingList/shopping_list"
+	"CloudShoppingList/crdt"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -104,47 +104,99 @@ func (c *Client) pull(filename string, maxRetries int, retryInterval time.Durati
 	return http.StatusInternalServerError
 }
 
-func makeShoppingList(email string) {
-	shoppingList := shopping_list.NewShoppingList(email)
-	shoppingList.AddItem("Milk", 2)
-	// store it locally in the list_storage folder
-	fmt.Println("Saving shopping list locally...")
-	shoppingList.SaveToFile(email + ".json")
+func (c *Client) makeShoppingList(email string) {
+	list := crdt.NewList(email)
+	fmt.Print("How many items do you want the list to have: ")
+	var numItems int
+	_, err := fmt.Scanln(&numItems)
+	if err != nil {
+		fmt.Println("Error scanning input:", err)
+		return
+	}
+	for i := 0; i < numItems; i++ {
+		fmt.Print("Enter item name: ")
+		var itemName string
+		_, err := fmt.Scanln(&itemName)
+		if err != nil {
+			fmt.Println("Error scanning input:", err)
+			return
+		}
+		fmt.Print("Enter item quantity: ")
+		var itemQuantity int
+		_, err2 := fmt.Scanln(&itemQuantity)
+		if err2 != nil {
+			fmt.Println("Error scanning input:", err2)
+			return
+		}
+		for j := 0; j < itemQuantity; j++ {
+			list.Increment(itemName)
+		}
+	}
+	//save list to file
+	list.SaveToFile(email)
 }
 
 func (c *Client) menu() {
 	fmt.Println("")
 	fmt.Println("Welcome to the shopping list app, " + c.email)
 	fmt.Println("1. Make shopping list")
-	fmt.Println("2. Push shopping list")
-	fmt.Println("3. Pull shopping list")
-	fmt.Println("4. Exit")
+	fmt.Println("2. Show shopping list from file")
+	fmt.Println("3. Push shopping list")
+	fmt.Println("4. Pull shopping list")
+	fmt.Println("5. Exit")
 	fmt.Println("")
 	// receive input
 	fmt.Print("Enter your choice: ")
 	var choice int
-	fmt.Scanln(&choice)
+	_, err := fmt.Scanln(&choice)
+	if err != nil {
+		fmt.Println("Error scanning input:", err)
+		return
+	}
 	switch choice {
 	case 1:
 		fmt.Println("")
 		fmt.Println("Do you want the list associated with your email? (y/n)")
 		var answer string
-		fmt.Scanln(&answer)
+		_, err := fmt.Scanln(&answer)
+		if err != nil {
+			fmt.Println("Error scanning input:", err)
+			return
+		}
 		if answer == "n" {
 			fmt.Print("Enter the email of the list you want to make: ")
 			var email string
-			fmt.Scanln(&email)
+			_, err := fmt.Scanln(&email)
+			if err != nil {
+				fmt.Println("Error scanning input:", err)
+				return
+			}
 			fmt.Println("Making shopping list for", email+"...")
-			makeShoppingList(email)
+			c.makeShoppingList(email)
 		}
 		if answer == "y" {
-			makeShoppingList(c.email)
+			c.makeShoppingList(c.email)
 		}
-	case 2:
 		break
+	case 2:
+		fmt.Println("")
+		fmt.Print("Enter the email of the list you want to show: ")
+		var email string
+		_, err := fmt.Scanln(&email)
+		if err != nil {
+			fmt.Println("Error scanning input:", err)
+			return
+		}
+		fmt.Println("Showing shopping list for", email+"...")
+		list := crdt.LoadFromFile(email)
+		for key, value := range list.Data {
+			fmt.Println(key, value.Value())
+		}
 	case 3:
 		break
 	case 4:
+		break
+	case 5:
 		os.Exit(0)
 	default:
 		fmt.Println("Invalid choice")
@@ -154,12 +206,13 @@ func (c *Client) menu() {
 func main() {
 	fmt.Print("Enter your email: ")
 	var email string
-	fmt.Scanln(&email)
-	client := NewClient(email)
-	makeShoppingList(client.email)
-	pushStatus := client.push(client.email+".json", 3, time.Second*2)
-	if pushStatus != http.StatusOK {
-		fmt.Println("Exiting...")
+	_, err := fmt.Scanln(&email)
+	if err != nil {
+		fmt.Println("Error scanning input:", err)
 		return
+	}
+	client := NewClient(email)
+	for {
+		client.menu()
 	}
 }
