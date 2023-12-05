@@ -2,9 +2,11 @@ package main
 
 import (
 	"CloudShoppingList/consistent_hashing"
+	"bytes"
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"strings"
 )
@@ -57,31 +59,26 @@ func (lb *LoadBalancer) HandleNodeConnection(w http.ResponseWriter, r *http.Requ
 
 func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Request) {
 	// Read the request body
-	body, err := io.ReadAll(r.Body)
+	err := r.ParseMultipartForm(32 << 20)
 	if err != nil {
-		// If there is an error reading the body, respond with a bad request error
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
+		http.Error(w, "Error parsing request body", http.StatusBadRequest)
 		return
 	}
+	email := r.FormValue("email")
+	fmt.Println("Email:", email)
 
-	// Split the body into parts using commas
-	parts := strings.Split(string(body), ",")
-
-	fmt.Println("Parts:", parts)
-
-	// Check if the number of parts is not equal to 3
-	if len(parts) != 3 {
-		// If the format is invalid, respond with a bad request error
-		http.Error(w, "Invalid request body format", http.StatusBadRequest)
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Error reading file", http.StatusBadRequest)
 		return
 	}
+	defer func(file multipart.File) {
+		err := file.Close()
+		if err != nil {
 
-	// Extract email, filename, and contents from the parts
-	email := parts[0]
-	filename := parts[1]
-	contents := parts[2]
-	fmt.Println(email, filename, contents)
-
+		}
+	}(file)
+	fmt.Printf("Received file %s\n", handler.Filename)
 	// Get the node ID for the email
 	servers, err := lb.Put(email)
 	if err != nil {
@@ -89,23 +86,81 @@ func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Error getting node ID", http.StatusInternalServerError)
 		return
 	}
-
-	// Send the file to all servers
-	for _, serverAddress := range servers {
-		// Connect to the server
-		resp, err := http.Post("http://"+serverAddress+"/putListServer", "text/plain", strings.NewReader(email+","+contents))
-		if err != nil {
-			http.Error(w, "Error connecting to server:", http.StatusInternalServerError)
-			return
-		}
-		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
-				http.Error(w, "Error closing connection to server:", http.StatusInternalServerError)
-			}
-		}(resp.Body)
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return
 	}
 
+	// Send the file to all servers simultaneously
+	for _, server := range servers {
+		fmt.Printf("Sending file to server %s\n", server)
+
+		// Create a new multipart form
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+
+		// Write the email to the form
+		err = writer.WriteField("email", email)
+		if err != nil {
+			fmt.Println("Error writing to form field:", err)
+			return
+		}
+
+		// Create a new form file
+		part, err := writer.CreateFormFile("file", handler.Filename)
+		if err != nil {
+			fmt.Println("Error creating form file:", err)
+			return
+		}
+
+		// Write the file contents to the form file
+		_, err = part.Write(contents)
+		if err != nil {
+			fmt.Println("Error writing to form file:", err)
+			return
+		}
+
+		// Close the writer
+		err = writer.Close()
+		if err != nil {
+			fmt.Println("Error closing writer:", err)
+			return
+		}
+
+		// Create a new request
+		req, err := http.NewRequest("POST", "http://"+server+"/putListServer", body)
+		if err != nil {
+			fmt.Println("Error creating request:", err)
+			return
+		}
+
+		// Set the content type header
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		// Send the request
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			fmt.Println("Error sending request:", err)
+			return
+		}
+
+		// Close the response body
+		err = resp.Body.Close()
+		if err != nil {
+			fmt.Println("Error closing response body:", err)
+			return
+		}
+
+		// Check the response status code
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("Error sending file to server:", resp.Status)
+			return
+		}
+
+		// Print a success message
+		fmt.Println("Sent file to server successfully")
+	}
 	// Send a success response (HTTP 200 OK) to the client
 	w.WriteHeader(http.StatusOK)
 }

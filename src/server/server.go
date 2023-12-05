@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -105,18 +106,35 @@ func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http
 	// split the request body into email and shopping list
 	fmt.Println("Handling shopping list put")
 	fmt.Println("")
-	body, err := io.ReadAll(request.Body)
+	err := request.ParseMultipartForm(32 << 20)
 	if err != nil {
-		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
+		http.Error(writer, "Error parsing request body", http.StatusBadRequest)
 		return
 	}
-	parts := strings.Split(string(body), ",")
-	if len(parts) != 2 {
-		http.Error(writer, "Invalid request body format", http.StatusBadRequest)
+	email := request.FormValue("email")
+	fmt.Println("Email:", email)
+
+	file, handler, err := request.FormFile("file")
+	if err != nil {
+		http.Error(writer, "Error reading file", http.StatusBadRequest)
 		return
 	}
-	email := parts[0]
-	shoppingList := parts[1]
+	defer func(file multipart.File) {
+		err := file.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(file)
+
+	fmt.Println("File name:", handler.Filename)
+
+	// read the shopping list from the file
+	shoppingList, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(writer, "Error reading file", http.StatusBadRequest)
+		return
+	}
+
 	// insert the shopping list into the database
 	_, err = s.db.Exec("INSERT INTO shopping_lists (email, shopping_list) VALUES (?, ?)", email, shoppingList)
 	if err != nil {

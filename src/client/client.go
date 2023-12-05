@@ -2,9 +2,10 @@ package main
 
 import (
 	"CloudShoppingList/crdt"
-	"encoding/hex"
+	"bytes"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -35,11 +36,47 @@ func (c *Client) push(filename string, maxRetries int, retryInterval time.Durati
 
 	for retry := 0; retry < maxRetries; retry++ {
 
-		body := strings.NewReader(fmt.Sprintf("%s,%s,%s", c.email, filename, hex.EncodeToString(file_contents[:])))
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		err := writer.WriteField("email", filename)
+		if err != nil {
+			fmt.Println("Error writing to form field:", err)
+			return 0
+		}
+
+		part, err := writer.CreateFormFile("file", filename)
+
+		if err != nil {
+			fmt.Println("Error creating form file:", err)
+			return -1
+		}
+		_, err = part.Write(file_contents)
+
+		if err != nil {
+			fmt.Println("Error writing to form file:", err)
+			return -1
+		}
+
+		err = writer.Close()
+
+		if err != nil {
+			fmt.Println("Error closing writer:", err)
+			return -1
+		}
 
 		fmt.Println("Body:", body)
 
-		resp, err := http.Post(url, "text/plain", body)
+		req, err := http.NewRequest("POST", url, body)
+
+		if err != nil {
+			fmt.Println("Error creating request:", err)
+			return -1
+		}
+
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		resp, err := http.DefaultClient.Do(req)
+
 		if err != nil {
 			fmt.Printf("Error connecting to the server (retry %d/%d): %v\n", retry+1, maxRetries, err)
 			if retry == maxRetries-1 {
@@ -49,7 +86,6 @@ func (c *Client) push(filename string, maxRetries int, retryInterval time.Durati
 			retryInterval *= 2
 			continue
 		}
-
 		defer func(Body io.ReadCloser) {
 			err := Body.Close()
 			if err != nil {
@@ -61,6 +97,7 @@ func (c *Client) push(filename string, maxRetries int, retryInterval time.Durati
 			fmt.Println("Pushed to the server successfully.")
 			return resp.StatusCode
 		}
+		fmt.Printf("Error pushing to the server: %d.\n", resp.StatusCode)
 	}
 
 	fmt.Printf("Max retries reached. Could not connect to the load balancer after %d attempts.\n", maxRetries)
@@ -193,6 +230,17 @@ func (c *Client) menu() {
 			fmt.Println(key, value.Value())
 		}
 	case 3:
+		fmt.Println("")
+		fmt.Print("Enter the email of the list you want to push: ")
+		var email string
+		_, err := fmt.Scanln(&email)
+		if err != nil {
+			fmt.Println("Error scanning input:", err)
+			return
+		}
+		fmt.Println("Pushing shopping list for", email+"...")
+		c.push(email, 3, time.Second*2)
+		fmt.Println("Pushed shopping list for", email+" successfully")
 		break
 	case 4:
 		break
