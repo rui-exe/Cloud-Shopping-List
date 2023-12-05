@@ -93,7 +93,7 @@ func (ctx *CausalContext) Current(id string) int {
 
 func (ctx *CausalContext) Join(other *CausalContext) {
 	if other == ctx {
-		return 
+		return
 	}
 
 	for key, value := range ctx.cc {
@@ -106,7 +106,6 @@ func (ctx *CausalContext) Join(other *CausalContext) {
 	for key, value := range other.cc {
 		ctx.InsertDot(key, value, false)
 	} 
-
 	ctx.Compact()
 }
 
