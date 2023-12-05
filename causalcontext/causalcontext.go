@@ -76,7 +76,6 @@ func (ctx *CausalContext) MakeDot(id string) Pair {
 }
 
 func (ctx *CausalContext) InsertDot(key string, value int, compactNow bool) {
-
 	ctx.dc.Add(key, value)
 	if compactNow {
 		ctx.Compact()
@@ -109,7 +108,6 @@ func (ctx *CausalContext) Join(other *CausalContext) {
 	} 
 
 	ctx.Compact()
-
 }
 
 func max(a, b int) int {

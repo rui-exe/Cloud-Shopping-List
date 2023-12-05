@@ -25,8 +25,6 @@ type Dot struct {
 	Counter int
 }
 
-
-
 func NewList(id string) *List {
 	list := &List{
 		data:      make(map[string]*DotStore),
@@ -48,7 +46,7 @@ func (list *List) Increment(key string) {
 	list.data[key].update(list.replicaID , Counter{Positive:1, Negative:0}, list.cc)
 }
 
-func (list *List)  Decrement(key string) {
+func (list *List) Decrement(key string) {
 	if list.data[key] == nil {
 		list.data[key] = &DotStore{data: make(map[Dot]Counter)}
 	}
@@ -66,9 +64,7 @@ func (DotStore *DotStore) update(replicaID string, change Counter, cc *causalcon
 			version = dot.Counter
 		}
 	}
-
 	currentCasualContexValue := cc.Current(replicaID)
-	
 
 	if (currentCasualContexValue != version) {
 		DotStore.fresh(replicaID, cc)
@@ -86,8 +82,6 @@ func (DotStore *DotStore) fresh(replicaID string, cc *causalcontext.CausalContex
 	DotStore.data[Dot{ReplicaID:pair.Key, Counter:pair.Value}] = Counter{Positive:0, Negative:0}
 	cc.MakeDot(pair.Key)
 }
-
-
 
 func (DotStore *DotStore) value() int {
 	value := 0
@@ -133,22 +127,17 @@ func (list *List) join (other *List) {
 	for key, dotStore := range originalData {
 		if _, exists := other.data[key]; !exists {
 			for dot, _ := range dotStore.data {
-		
 				if (dot.Counter <= other.cc.Current(dot.ReplicaID)) {
 					list.data[key].remove(dot)
 				}
-
 			}
 		}
 	}
-	
 	
 	list.cc.Join(other.cc)
 	for _, dotStore := range other.data {
 		dotStore.fresh(other.replicaID, other.cc)
 	}
-
-
 }
 
 func (DotStore *DotStore) getDot (){
@@ -159,8 +148,6 @@ func (DotStore *DotStore) getDot (){
 	}
 }
 
-
-
 func (DotStore *DotStore) add(dot Dot, counter Counter) {
 	DotStore.data[dot] = counter
 }
@@ -169,23 +156,38 @@ func (DotStore *DotStore) remove(dot Dot) {
 	delete(DotStore.data, dot)
 }
 
-
+func printList(list *List) {
+	print("List: ", list.replicaID, "\n")
+	for key, dotStore := range list.data {
+		print("  ", key)
+		print(":")
+		print(dotStore.value())
+		print("\n")
+	}
+}
 
 func main() {
 	list1 := NewList("1")
 	list1.Increment("friend")
 	list1.Increment("friend")
+	list1.Increment("newItem")
+	list1.Increment("newItem2")
     list2 := NewList("2")
 	list2.join(list1)
-	print(list1.data["friend"].value())
-	print(list2.data["friend"].value())
+	println(list1.data["friend"].value())
+	println(list2.data["friend"].value())
 	print("\n")
+	printList(list1)
+	printList(list2)
 	list2.Remove("friend")
+	printList(list2)
 	list1.Increment("friend")
 	list1.Increment("friend")
 	list1.Increment("friend")
+	list1.Decrement("friend")
 	list1.join(list2)
-	print(list1.data["friend"].value())
+	println(list1.data["friend"].value())
+	printList(list1)
 	print("\n")	
 }
 
