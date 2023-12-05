@@ -144,7 +144,7 @@ func (DotStore *DotStore) getDot (){
 	for dot, _ := range DotStore.data {
 		print(dot.ReplicaID)
 		print(dot.Counter)
-		print("Here\n")
+		println("Here")
 	}
 }
 
@@ -157,13 +157,13 @@ func (DotStore *DotStore) remove(dot Dot) {
 }
 
 func printList(list *List) {
-	print("List: ", list.replicaID, "\n")
+	println("List: ", list.replicaID)
 	for key, dotStore := range list.data {
 		print("  ", key)
 		print(":")
-		print(dotStore.value())
-		print("\n")
+		println(dotStore.value())
 	}
+	println()
 }
 
 func main() {
@@ -174,9 +174,6 @@ func main() {
 	list1.Increment("newItem2")
     list2 := NewList("2")
 	list2.join(list1)
-	println(list1.data["friend"].value())
-	println(list2.data["friend"].value())
-	print("\n")
 	printList(list1)
 	printList(list2)
 	list2.Remove("friend")
@@ -188,7 +185,7 @@ func main() {
 	list1.join(list2)
 	println(list1.data["friend"].value())
 	printList(list1)
-	print("\n")	
+	println()	
 }
 
 func max(c1 Counter, c2 Counter) Counter {
