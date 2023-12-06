@@ -1,7 +1,12 @@
-package main
+package crdt
 
 import (
 	"CloudShoppingList/causalcontext"
+	"bytes"
+	"encoding/base64"
+	"encoding/gob"
+	"fmt"
+	"os"
 )
 
 // ORMap represents an Observed-Remove Map.
@@ -155,6 +160,32 @@ func (DotStore *DotStore) remove(dot Dot) {
 	delete(DotStore.data, dot)
 }
 
+func FromGOB64(s string) *List {
+	list := &List{}
+	data, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		fmt.Println("Error decoding list:", err)
+	}
+	b := bytes.Buffer{}
+	b.Write(data)
+	d := gob.NewDecoder(&b)
+	err = d.Decode(list)
+	if err != nil {
+		fmt.Println("Error decoding list:", err)
+	}
+	return list
+}
+
+func (list *List) ToGOB64() string {
+	b := bytes.Buffer{}
+	e := gob.NewEncoder(&b)
+	err := e.Encode(list)
+	if err != nil {
+		fmt.Println("Error encoding list:", err)
+	}
+	return base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
 func printList(list *List) {
 	println("List: ", list.replicaID)
 	for key, dotStore := range list.data {
@@ -165,7 +196,36 @@ func printList(list *List) {
 	println()
 }
 
-func main() {
+func (list *List) init() {
+	gob.Register(&List{})
+	gob.Register(&DotStore{})
+	gob.Register(&Counter{})
+	gob.Register(&Dot{})
+}
+
+func (list *List) SaveToFile(filename string, clientID string) {
+	list.init()
+	data := list.ToGOB64()
+	fmt.Println("Saving list to file...")
+	err := os.WriteFile("../list_storage/"+clientID+"/"+filename, []byte(data), 0644)
+	if err != nil {
+		fmt.Println("Error saving list to file:", err)
+	}
+	fmt.Println("Saved list to file successfully")
+}
+
+func LoadFromFile(filename string, clientID string) *List {
+	list := &List{}
+	data, err := os.ReadFile("../list_storage/" + clientID + "/" + filename)
+	if err != nil {
+		fmt.Println("Error loading list from file:", err)
+	}
+	list.init()
+	list = FromGOB64(string(data))
+	return list
+}
+
+func Test() {
 	list1 := NewList("1")
 	list1.Increment("friend")
 	list1.Increment("friend")

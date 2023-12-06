@@ -10,14 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type Server struct {
 	port           string
 	name           string
-	nodeID         string
 	loadBalancerIP string
 	db             *sql.DB
 }
@@ -45,12 +43,12 @@ func NewServer(port string, name string) *Server {
 		os.Exit(1)
 	}
 
-	return &Server{port: port, name: name, nodeID: uuid.New().String(), loadBalancerIP: "localhost:8080", db: db}
+	return &Server{port: port, name: name, loadBalancerIP: "localhost:8080", db: db}
 }
 
 func (s *Server) Run() {
 	// Print the node ID
-	fmt.Println("Node ID:", s.nodeID)
+	fmt.Println("Name:", s.name)
 	// Connect to the load balancer with retries
 	status := s.connectToLoadBalancerWithRetries(3, time.Second*2)
 	if status != http.StatusOK {
@@ -72,7 +70,7 @@ func (s *Server) connectToLoadBalancerWithRetries(maxRetries int, retryInterval 
 
 	for retry := 0; retry < maxRetries; retry++ {
 		// Create a buffer with the node ID and server port
-		body := strings.NewReader(fmt.Sprintf("%s,%s", s.nodeID, "localhost:"+s.port))
+		body := strings.NewReader(fmt.Sprintf("%s,%s", s.name, "localhost:"+s.port))
 
 		resp, err := http.Post(url, "text/plain", body)
 		if err != nil {
@@ -148,7 +146,28 @@ func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http
 }
 
 func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http.Request) {
-	//TODO: implement
+	// get the email from the url
+	fmt.Println("Handling shopping list get")
+	fmt.Println("")
+	email := strings.TrimPrefix(request.URL.Path, "/getListServer/")
+	fmt.Println("Email:", email)
+	// get the shopping list from the database
+	row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email = ?", email)
+	var shoppingList []byte
+	err := row.Scan(&shoppingList)
+	if err != nil {
+		http.Error(writer, "Error getting shopping list from database", http.StatusInternalServerError)
+		return
+	}
+	// send the shopping list to the load balancer
+	writer.WriteHeader(http.StatusOK)
+	_, err = writer.Write(shoppingList)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("Successfully sent shopping list to load balancer")
+
 }
 
 func main() {
@@ -159,6 +178,6 @@ func main() {
 	// create an HTTP server with the specified port
 	server := NewServer(os.Args[1], os.Args[2])
 	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
-	http.HandleFunc("/getListServer", server.HandleShoppingListGet)
+	http.HandleFunc("/getListServer/", server.HandleShoppingListGet)
 	server.Run()
 }
