@@ -191,21 +191,18 @@ func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Req
 		// Send the request to the server
 		resp, err := http.Get("http://" + server + "/getListServer/" + email)
 		if err != nil {
-			http.Error(w, "Error sending request to server", http.StatusInternalServerError)
 			continue
 		}
 		defer resp.Body.Close()
 
 		// Check the response status code
 		if resp.StatusCode != http.StatusOK {
-			http.Error(w, "Error getting shopping list from server", http.StatusInternalServerError)
 			continue
 		}
 
 		// Copy the response body to the client
 		_, err = io.Copy(w, resp.Body)
 		if err != nil {
-			http.Error(w, "Error copying response body to client", http.StatusInternalServerError)
 			continue
 		}
 
@@ -213,6 +210,9 @@ func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	// If the request was not successful, send an error response (HTTP 500 Internal Server Error) to the client
+	http.Error(w, "Error getting shopping list from server", http.StatusInternalServerError)
 }
 
 func main() {

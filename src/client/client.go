@@ -97,6 +97,8 @@ func (c *Client) push(filename string, maxRetries int, retryInterval time.Durati
 			return resp.StatusCode
 		}
 		fmt.Printf("Error pushing to the server: %d.\n", resp.StatusCode)
+		time.Sleep(time.Duration(time.Second * 2))
+		retryInterval *= 2
 	}
 
 	fmt.Printf("Max retries reached. Could not connect to the load balancer after %d attempts.\n", maxRetries)
@@ -123,7 +125,7 @@ func (c *Client) pull(filename string, maxRetries int, retryInterval time.Durati
 			if retry == maxRetries-1 {
 				break
 			}
-			time.Sleep(retryInterval)
+			time.Sleep(time.Duration(time.Second * 2))
 			retryInterval *= 2
 			continue
 		}
@@ -148,6 +150,8 @@ func (c *Client) pull(filename string, maxRetries int, retryInterval time.Durati
 			return resp.StatusCode
 		}
 		fmt.Printf("Error pulling from the server: %d.\n", resp.StatusCode)
+		time.Sleep(time.Duration(time.Second * 2))
+		retryInterval *= 2
 	}
 
 	fmt.Printf("Max retries reached. Could not connect to the load balancer after %d attempts.\n", maxRetries)
