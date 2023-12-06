@@ -1,6 +1,7 @@
 package main
 
 import (
+	"CloudShoppingList/crdt"
 	"database/sql"
 	"fmt"
 	"io"
@@ -126,18 +127,40 @@ func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http
 
 	fmt.Println("File name:", handler.Filename)
 
+	row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email = ?", email)
+	var shoppingListDatabase []byte
+	row.Scan(&shoppingListDatabase)
+	if err != nil {
+		http.Error(writer, "Error getting shopping list from database", http.StatusInternalServerError)
+		return
+	}
+
 	// read the shopping list from the file
-	shoppingList, err := io.ReadAll(file)
+	shoppingListClient, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(writer, "Error reading file", http.StatusBadRequest)
 		return
 	}
 
-	// insert the shopping list into the database
-	_, err = s.db.Exec("INSERT INTO shopping_lists (email, shopping_list) VALUES (?, ?)", email, shoppingList)
-	if err != nil {
-		http.Error(writer, "Error inserting shopping list into database", http.StatusInternalServerError)
-		return
+	// Join the shopping list from the database and the shopping list from the client
+	// using the CRDT implementation
+	if len(shoppingListDatabase) != 0 {
+		listClient := crdt.FromGOB64(string(shoppingListClient))
+		listDatabase := crdt.FromGOB64(string(shoppingListDatabase))
+		listDatabase.Join(listClient)
+		shoppingListClient = []byte(listClient.ToGOB64())
+		_, err = s.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email = ?", shoppingListClient, email)
+		if err != nil {
+			http.Error(writer, "Error updating shopping list in database", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// insert the shopping list into the database
+		_, err = s.db.Exec("INSERT INTO shopping_lists (email, shopping_list) VALUES (?, ?)", email, shoppingListClient)
+		if err != nil {
+			http.Error(writer, "Error inserting shopping list into database", http.StatusInternalServerError)
+			return
+		}
 	}
 	// send a success response to the load balancer
 	writer.WriteHeader(http.StatusOK)

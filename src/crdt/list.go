@@ -98,7 +98,7 @@ func (DotStore *DotStore) Value() int {
 	return value
 }
 
-func (list *List) join(other *List) {
+func (list *List) Join(other *List) {
 	originalData := make(map[string]*DotStore)
 	for key, dotStore := range list.Data {
 		newDotStore := &DotStore{Data: make(map[Dot]Counter)}
@@ -233,7 +233,7 @@ func Test() {
 	// list1.Increment("newItem2")
 
 	list2 := NewList("2")
-	list2.join(list1)
+	list2.Join(list1)
 
 	printList(list1)
 	printList(list2)
@@ -251,7 +251,7 @@ func Test() {
 	list1.Decrement("friend")
 	println("Remove 1 friend from list1:")
 	printList(list1)
-	list1.join(list2)
+	list1.Join(list2)
 
 	printList(list1)
 	println()

@@ -96,21 +96,27 @@ func (ctx *CausalContext) Current(id string) int {
 }
 
 func (ctx *CausalContext) Join(other *CausalContext) {
-	if other == ctx {
-		return
-	}
+    if other == ctx {
+        return
+    }
 
-	for key, value := range ctx.Cc {
-		other_value, exists := other.Cc[key]
-		if exists {
-			ctx.Cc[key] = max(value, other_value)
-		}
-	}
+    // Create a copy of ctx.Cc to iterate over
+    originalCtxCc := make(map[string]int)
+    for key, value := range ctx.Cc {
+        originalCtxCc[key] = value
+    }
 
-	for key, value := range other.Cc {
-		ctx.InsertDot(key, value, false)
-	}
-	ctx.Compact()
+    // Update ctx.Cc with the maximum values from other.Cc
+    for key, otherValue := range other.Cc {
+        if value, exists := originalCtxCc[key]; exists {
+            ctx.Cc[key] = max(value, otherValue)
+        } else {
+            ctx.Cc[key] = otherValue
+        }
+    }
+
+    ctx.Compact()
+
 }
 
 func max(a, b int) int {
