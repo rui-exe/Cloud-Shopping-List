@@ -33,6 +33,10 @@ func (lb *LoadBalancer) Get(email string) (string, error) {
 	return lb.Ring.Get(email)
 }
 
+func (lb *LoadBalancer) GetNodeAndReplicas(email string) ([]string, error) {
+	return lb.Ring.GetNodeAndReplicas(email)
+}
+
 func (lb *LoadBalancer) HandleNodeConnection(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received node connection")
 
@@ -174,36 +178,41 @@ func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Req
 	fmt.Println("Email:", email)
 
 	// Get the node ID for the email
-	server, err := lb.Get(email)
+	servers, err := lb.GetNodeAndReplicas(email)
+	fmt.Println("Server:", servers)
 	if err != nil {
 		// If there is an error getting the node ID, respond with an internal server error
 		http.Error(w, "Error getting node ID", http.StatusInternalServerError)
 		return
 	}
 
-	// Send the request to the server
-	resp, err := http.Get("http://" + server + "/getListServer/" + email)
-	if err != nil {
-		http.Error(w, "Error sending request to server", http.StatusInternalServerError)
+	for _, server := range servers {
+
+		// Send the request to the server
+		resp, err := http.Get("http://" + server + "/getListServer/" + email)
+		if err != nil {
+			http.Error(w, "Error sending request to server", http.StatusInternalServerError)
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Check the response status code
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "Error getting shopping list from server", http.StatusInternalServerError)
+			continue
+		}
+
+		// Copy the response body to the client
+		_, err = io.Copy(w, resp.Body)
+		if err != nil {
+			http.Error(w, "Error copying response body to client", http.StatusInternalServerError)
+			continue
+		}
+
+		// Send a success response (HTTP 200 OK) to the client
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	defer resp.Body.Close()
-
-	// Check the response status code
-	if resp.StatusCode != http.StatusOK {
-		http.Error(w, "Error getting shopping list from server", http.StatusInternalServerError)
-		return
-	}
-
-	// Copy the response body to the client
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		http.Error(w, "Error copying response body to client", http.StatusInternalServerError)
-		return
-	}
-
-	// Send a success response (HTTP 200 OK) to the client
-	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
