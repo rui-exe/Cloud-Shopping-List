@@ -110,9 +110,7 @@ func (ctx *CausalContext) Join(other *CausalContext) {
 	for key, value := range other.Cc {
 		ctx.InsertDot(key, value, false)
 	}
-
 	ctx.Compact()
-
 }
 
 func max(a, b int) int {
