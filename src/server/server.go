@@ -55,8 +55,6 @@ func (s *Server) Run() {
 		fmt.Println("Exiting...")
 		return
 	}
-	// await incoming http messages
-	http.HandleFunc("/putList", s.HandleShoppingListPut)
 	fmt.Println("Server listening on port " + s.port)
 	err := http.ListenAndServe(":"+s.port, nil)
 	if err != nil {
@@ -170,6 +168,26 @@ func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http
 
 }
 
+func (s *Server) HandleNeighborPost(writer http.ResponseWriter, request *http.Request) {
+	
+	err := request.ParseMultipartForm(32 << 20)
+	if err != nil {
+		http.Error(writer, "Error parsing request body", http.StatusBadRequest)
+		return
+	}
+
+	// Access form data
+	id := request.FormValue("id")
+	server := request.FormValue("server")
+
+	// Print the form data
+	fmt.Printf("Received form data - ID: %s, Server: %s\n", id, server)
+
+	writer.WriteHeader(http.StatusOK)
+	fmt.Println("Successfully added neighbor")
+
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: ./server <port> <name>")
@@ -179,5 +197,6 @@ func main() {
 	server := NewServer(os.Args[1], os.Args[2])
 	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
 	http.HandleFunc("/getListServer/", server.HandleShoppingListGet)
+	http.HandleFunc("/addNeighbor", server.HandleNeighborPost)
 	server.Run()
 }

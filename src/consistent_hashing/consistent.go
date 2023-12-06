@@ -14,7 +14,7 @@ type Ring struct {
 	sync.RWMutex
 	virtualNodes      int
 	RealToVirtual     map[string][]string
-	replicationFactor int
+	ReplicationFactor int
 }
 
 type Nodes []Node
@@ -36,7 +36,7 @@ func NewRing() *Ring {
 		Nodes:             Nodes{},
 		virtualNodes:      3,
 		RealToVirtual:     make(map[string][]string),
-		replicationFactor: 2,
+		ReplicationFactor: 2,
 	}
 }
 
@@ -129,7 +129,7 @@ func (r *Ring) Put(email string) ([]string, error) {
 	forbiddenIds[parentId] = true
 
 	// Determine the next two nodes for replication
-	for j := 1; j <= r.replicationFactor; {
+	for j := 1; j <= r.ReplicationFactor; {
 		idToCheck := ""
 		if r.Nodes[(i+j)%len(r.Nodes)].IsVirtual {
 			idToCheck = r.Nodes[(i+j)%len(r.Nodes)].RealNodeId
