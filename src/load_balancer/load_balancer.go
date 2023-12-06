@@ -9,7 +9,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type LoadBalancer struct {
@@ -58,135 +57,9 @@ func (lb *LoadBalancer) HandleNodeConnection(w http.ResponseWriter, r *http.Requ
 	lb.AddNode(nodeID, nodeAddress)
 	fmt.Printf("Added node %s at address %s\n", nodeID, nodeAddress)
 	lb.Ring.PrintNodes()
-
-	// Send a success response to the node
+	lb.Ring.PrintNeighbors()
 	w.WriteHeader(http.StatusOK)
-	go lb.SendNeighborList(lb.Ring.Nodes, nodeID)
 }
-
-func (lb *LoadBalancer) SendNeighborList(nodes consistent.Nodes, nodeID string) {
-	index := -1
-	for i, node := range nodes {
-		if node.Id == nodeID {
-			index = i
-			break
-		}
-	}
-
-	if index == -1 {
-		return
-	}
-	
-
-	counter := 0
-
-	for i := 1; i < len(nodes) ; i++ {
-		if counter == lb.Ring.ReplicationFactor{
-			break
-		}
-		prevIndex := index - i
-		if prevIndex < 0 {
-			prevIndex += len(nodes)
-		}
-		if (prevIndex == index) {
-			break
-		}
-
-		// Get the previous node
-		prevNode := nodes[prevIndex]
-		if (prevNode.IsVirtual) {
-			continue // skip virtual nodes
-		} else {
-			err := lb.SendNeighbor(nodes, prevIndex)
-			if err != nil {
-				fmt.Println("Error sending neighbor:", err)
-				return 
-			} else {
-				counter++
-			}
-		}
-	}
-	lb.SendNeighbor(nodes, index)
-}
-
-func (lb *LoadBalancer) SendNeighbor(nodes consistent.Nodes, index int) error{
-	counter := 0
-	// Get the next 2 nodes in the nodes array excluding virtual nodes and send them to the node
-	for i:=1; i < len(nodes); i++{
-		if (counter == lb.Ring.ReplicationFactor){
-			break
-		}
-		nextIndex := (index + i) % len(nodes)
-		if (nextIndex == index) {
-			break
-		}
-		nextNode := nodes[nextIndex]
-		if (nextNode.IsVirtual) {
-			continue // skip virtual nodes
-		} else {
-			err := lb.SendNeighborToNode(nodes, nextIndex, nodes[index].Server)
-			if err != nil {
-				fmt.Println("Error sending neighborsss:", err)
-				return err
-			} else {
-				counter++
-			}
-		}
-	}
-	return nil
-}
-
-func (lb *LoadBalancer) SendNeighborToNode(nodes consistent.Nodes, index int, server string) error {
-	var lastErr error
-
-    for attempt := 0; attempt < 3; attempt++ {
-        if attempt > 0 {
-            time.Sleep(5 * time.Second) 
-        }
-
-        body := &bytes.Buffer{}
-        writer := multipart.NewWriter(body)
-
-        // Write form fields
-        writer.WriteField("id", nodes[index].Id)
-        writer.WriteField("server", nodes[index].Server)
-
-        // Finalize the multipart request
-        if err := writer.Close(); err != nil {
-            lastErr = err
-            continue
-        }
-
-        // Send the request to the server
-        req, err := http.NewRequest("POST", "http://"+server+"/addNeighbor", body)
-        if err != nil {
-            lastErr = err
-            continue
-        }
-        req.Header.Set("Content-Type", writer.FormDataContentType())
-
-        resp, err := http.DefaultClient.Do(req)
-        if err != nil {
-            lastErr = err
-			fmt.Println("Error sending request:", err)
-            continue
-        }
-        defer resp.Body.Close()
-
-        if resp.StatusCode == http.StatusOK {
-            return nil // Success, exit the function
-        }
-
-        // Record the last error if response is not OK
-        lastErr = fmt.Errorf("Error sending neighbor to server: %s", resp.Status)
-    }
-
-    // Return the last error if all retries failed
-    return lastErr
-}
-
-
-
 
 func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Request) {
 	// Read the request body

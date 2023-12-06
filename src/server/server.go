@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -13,11 +14,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const replicationFactor = 2
+
 type Server struct {
 	port           string
 	name           string
 	loadBalancerIP string
 	db             *sql.DB
+	frontNeighbors []string
+	backNeighbors  []string
 }
 
 func NewServer(port string, name string) *Server {
@@ -43,7 +48,7 @@ func NewServer(port string, name string) *Server {
 		os.Exit(1)
 	}
 
-	return &Server{port: port, name: name, loadBalancerIP: "localhost:8080", db: db}
+	return &Server{port: port, name: name, loadBalancerIP: "localhost:8080", db: db, frontNeighbors: []string{}, backNeighbors: []string{}}
 }
 
 func (s *Server) Run() {
@@ -53,12 +58,6 @@ func (s *Server) Run() {
 	status := s.connectToLoadBalancerWithRetries(3, time.Second*2)
 	if status != http.StatusOK {
 		fmt.Println("Exiting...")
-		return
-	}
-	fmt.Println("Server listening on port " + s.port)
-	err := http.ListenAndServe(":"+s.port, nil)
-	if err != nil {
-		fmt.Println(err)
 		return
 	}
 }
@@ -168,26 +167,6 @@ func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http
 
 }
 
-func (s *Server) HandleNeighborPost(writer http.ResponseWriter, request *http.Request) {
-	
-	err := request.ParseMultipartForm(32 << 20)
-	if err != nil {
-		http.Error(writer, "Error parsing request body", http.StatusBadRequest)
-		return
-	}
-
-	// Access form data
-	id := request.FormValue("id")
-	server := request.FormValue("server")
-
-	// Print the form data
-	fmt.Printf("Received form data - ID: %s, Server: %s\n", id, server)
-
-	writer.WriteHeader(http.StatusOK)
-	fmt.Println("Successfully added neighbor")
-
-}
-
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: ./server <port> <name>")
@@ -197,6 +176,7 @@ func main() {
 	server := NewServer(os.Args[1], os.Args[2])
 	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
 	http.HandleFunc("/getListServer/", server.HandleShoppingListGet)
-	http.HandleFunc("/addNeighbor", server.HandleNeighborPost)
-	server.Run()
+	go server.Run()
+	fmt.Println("listening on port", server.port)
+	log.Fatal(http.ListenAndServe(":"+server.port, nil))
 }

@@ -25,6 +25,8 @@ type Node struct {
 	Server     string
 	IsVirtual  bool
 	RealNodeId string
+	FrontNodes []Node
+	BackNodes  []Node
 }
 
 func (n Nodes) Len() int           { return len(n) }
@@ -51,6 +53,8 @@ func NewNode(id, server string, isVirtual bool, realNodeId string) *Node {
 		Server:     server,
 		IsVirtual:  isVirtual,
 		RealNodeId: realNodeId,
+		FrontNodes: []Node{},
+		BackNodes:  []Node{},
 	}
 }
 
@@ -67,10 +71,111 @@ func (r *Ring) AddNode(id, server string) {
 		r.RealToVirtual[id] = append(r.RealToVirtual[id], virtualId)
 	}
 	sort.Sort(r.Nodes)
+	for _, node := range r.Nodes {
+		r.GetNodeFrontNeighbors(node.Id)
+		r.GetNodeBackNeighbors(node.Id)
+	}
 }
 
 func (r *Ring) RemoveNode(id string) {
 	// removes a real node and its virtual nodes from the hash_ring
+}
+
+func (r *Ring) GetNodeFrontNeighbors(id string) []Node {
+	if len(r.Nodes) == 0 {
+		return nil
+	}
+	var neighbors []Node
+	for i := 0; i < len(r.Nodes); i++ {
+		if r.Nodes[i].Id == id {
+			idx := i
+			parentId := r.Nodes[i].RealNodeId
+			if parentId == "" {
+				parentId = r.Nodes[i].Id
+			}
+			forbiddenIds := make(map[string]bool)
+			forbiddenIds[parentId] = true
+			// Get the next 2 nodes in the nodes array excluding virtual nodes from the same real node
+			for j := 1; j <= r.ReplicationFactor; {
+				nextIndex := (idx + j) % len(r.Nodes)
+				if nextIndex == i {
+					break
+				}
+				nextNode := r.Nodes[nextIndex]
+				if nextNode.IsVirtual {
+					//check if the virtual node belongs to the same real node
+					if forbiddenIds[nextNode.RealNodeId] {
+						idx++
+						continue
+					}
+					neighbors = append(neighbors, nextNode)
+					forbiddenIds[nextNode.RealNodeId] = true
+					j++
+				} else {
+					if forbiddenIds[nextNode.Id] {
+						idx++
+						continue
+					}
+					neighbors = append(neighbors, nextNode)
+					forbiddenIds[nextNode.Id] = true
+					j++
+				}
+			}
+			r.Nodes[i].FrontNodes = neighbors
+			break
+		}
+	}
+	return neighbors
+}
+
+func (r *Ring) GetNodeBackNeighbors(id string) []Node {
+	if len(r.Nodes) == 0 {
+		return nil
+	}
+	var neighbors []Node
+	for i := 0; i < len(r.Nodes); i++ {
+		if r.Nodes[i].Id == id {
+			idx := i
+			parentId := r.Nodes[i].RealNodeId
+			if parentId == "" {
+				parentId = r.Nodes[i].Id
+			}
+			forbiddenIds := make(map[string]bool)
+			forbiddenIds[parentId] = true
+			// Get the next 2 nodes in the nodes array excluding virtual nodes from the same real node
+			for j := 1; j <= r.ReplicationFactor; {
+				nextIndex := idx - j
+				if nextIndex < 0 {
+					nextIndex = len(r.Nodes) + nextIndex
+				}
+				if nextIndex == i {
+					break
+				}
+				nextNode := r.Nodes[nextIndex]
+				if nextNode.IsVirtual {
+					//check if the virtual node belongs to the same real node
+					if forbiddenIds[nextNode.RealNodeId] {
+						idx--
+						continue
+					}
+					neighbors = append(neighbors, nextNode)
+					forbiddenIds[nextNode.RealNodeId] = true
+					j++
+				} else {
+					if forbiddenIds[nextNode.Id] {
+						idx--
+						continue
+					}
+					neighbors = append(neighbors, nextNode)
+					forbiddenIds[nextNode.Id] = true
+					j++
+				}
+			}
+			r.Nodes[i].BackNodes = neighbors
+			break
+		}
+	}
+	return neighbors
 }
 
 func (r *Ring) Get(key string) (string, error) {
@@ -149,11 +254,29 @@ func (r *Ring) Put(email string) ([]string, error) {
 }
 
 func (r *Ring) PrintNodes() {
-	// iterate over the realtoVirtual map
-	for k, v := range r.RealToVirtual {
-		fmt.Println("Real node: ", k)
-		for _, virtualNode := range v {
-			fmt.Println("Virtual node: ", virtualNode)
+	// iterate over the nodes array
+	fmt.Println("Printing nodes")
+	for _, node := range r.Nodes {
+		fmt.Print("Node ID: ", node.Id)
+		fmt.Println(node.HashId)
+	}
+}
+func (r *Ring) PrintNeighbors() {
+	// iterate over the nodes array
+	fmt.Println("Printing neighbors")
+	for _, node := range r.Nodes {
+		fmt.Print("Node ID: ", node.Id)
+		fmt.Println(node.HashId)
+		fmt.Println("Front neighbors: ")
+		for _, frontNode := range node.FrontNodes {
+			fmt.Print(frontNode.Id + " ")
+			fmt.Println(frontNode.HashId)
+
+		}
+		fmt.Println("Back neighbors: ")
+		for _, backNode := range node.BackNodes {
+			fmt.Print(backNode.Id + " ")
+			fmt.Println(backNode.HashId)
 		}
 	}
 }
