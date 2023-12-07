@@ -8,21 +8,25 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
 type LoadBalancer struct {
-	Ring *consistent.Ring
+	Ring    *consistent.Ring
+	Servers []string
 }
 
 func NewLoadBalancer() *LoadBalancer {
 	return &LoadBalancer{
-		Ring: consistent.NewRing(),
+		Ring:    consistent.NewRing(),
+		Servers: []string{},
 	}
 }
 
 func (lb *LoadBalancer) AddNode(id, server string) {
 	lb.Ring.AddNode(id, server)
+	lb.Servers = append(lb.Servers, server)
 }
 
 func (lb *LoadBalancer) Put(email string) ([]string, error) {
@@ -59,6 +63,7 @@ func (lb *LoadBalancer) HandleNodeConnection(w http.ResponseWriter, r *http.Requ
 	lb.Ring.PrintNodes()
 	lb.Ring.PrintNeighbors()
 	w.WriteHeader(http.StatusOK)
+	go lb.shareNeighboursInformation()
 }
 
 func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Request) {
@@ -167,6 +172,50 @@ func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Req
 	}
 	// Send a success response (HTTP 200 OK) to the client
 	w.WriteHeader(http.StatusOK)
+}
+
+func (lb *LoadBalancer) shareNeighboursInformation() {
+	for _, server := range lb.Servers {
+
+		// start building the message strings seperated by commas
+		// "nodeId:NodehashId,frontNeighbour1:frontNeighbour1HashId,frontNeighbour2:frontNeighbour2HashId
+		//,backNeighbour1:backNeighbour1HashId,backNeighbour2:backNeighbour2HashId" and so on
+		message := ""
+		// iterate over the nodes array
+		for _, node := range lb.Ring.Nodes {
+			if node.Server == server {
+				currentNode := node
+				frontNeighbours := node.FrontNodes
+				backNeighbours := node.BackNodes
+				message = message + currentNode.Id + ":::" + string(currentNode.HashId)
+				for i, frontNode := range frontNeighbours {
+					message = message + ",,," + "frontNeighbor" + strconv.Itoa(i+1) + ":::" + frontNode.Server + ":::" + string(frontNode.HashId)
+				}
+				for i, backNode := range backNeighbours {
+					message = message + ",,," + "backNeighbor" + strconv.Itoa(i+1) + ":::" + backNode.Server + ":::" + string(backNode.HashId)
+				}
+				message = message + "****"
+			}
+		}
+		message = message[:len(message)-4]
+		fmt.Println("Message to be sent to server " + server + " is " + message)
+		// send the message to the server via plain text
+		resp, err := http.Post("http://"+server+"/shareNeighboursInformation", "text/plain", bytes.NewBufferString(message))
+		if err != nil {
+			fmt.Println("Error sending request to server", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check the response status code
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("Server responded with error", resp.Status)
+			return
+		}
+
+		// Print a success message
+		fmt.Println("Sent neighbours information to server" + server + " successfully")
+	}
 }
 
 func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Request) {

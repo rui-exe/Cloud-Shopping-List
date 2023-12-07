@@ -16,13 +16,20 @@ import (
 
 const replicationFactor = 2
 
+type Node struct {
+	id         string
+	hashId     []byte
+	frontNodes []Node
+	backNodes  []Node
+	server     string
+}
+
 type Server struct {
 	port           string
 	name           string
 	loadBalancerIP string
 	db             *sql.DB
-	frontNeighbors []string
-	backNeighbors  []string
+	nodes          []Node
 }
 
 func NewServer(port string, name string) *Server {
@@ -48,7 +55,7 @@ func NewServer(port string, name string) *Server {
 		os.Exit(1)
 	}
 
-	return &Server{port: port, name: name, loadBalancerIP: "localhost:8080", db: db, frontNeighbors: []string{}, backNeighbors: []string{}}
+	return &Server{port: port, name: name, loadBalancerIP: "localhost:8080", db: db, nodes: []Node{}}
 }
 
 func (s *Server) Run() {
@@ -167,6 +174,62 @@ func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http
 
 }
 
+func (s *Server) HandleNeighboursInformation(writer http.ResponseWriter, request *http.Request) {
+	// get the neighbours information from the request body
+	// "nodeId:NodehashId,frontNeighbour1:frontNeighbour1HashId,frontNeighbour2:frontNeighbour2HashId
+	//,backNeighbour1:backNeighbour1HashId,backNeighbour2:backNeighbour2HashId" and so on
+	fmt.Println("Handling neighbours information")
+	fmt.Println("")
+
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+	fmt.Println("Body:", string(body))
+	// split the body into lines
+	lines := strings.Split(string(body), "****")
+	newNodes := []Node{}
+	// iterate over the lines
+	for _, line := range lines {
+		node := Node{}
+		attributes := strings.Split(line, ",,,")
+		for i, attribute := range attributes {
+			if i == 0 {
+				node.id = strings.Split(attribute, ":::")[0]
+				node.hashId = []byte(strings.Split(attribute, ":::")[1])
+			} else if strings.Contains(attribute, "frontNeighbor1") {
+				frontNeighbor1 := Node{}
+				frontNeighbor1.id = strings.Split(attribute, ":::")[0]
+				frontNeighbor1.server = strings.Split(attribute, ":::")[1]
+				frontNeighbor1.hashId = []byte(strings.Split(attribute, ":::")[2])
+				node.frontNodes = append(node.frontNodes, frontNeighbor1)
+			} else if strings.Contains(attribute, "frontNeighbor2") {
+				frontNeighbor2 := Node{}
+				frontNeighbor2.id = strings.Split(attribute, ":::")[0]
+				frontNeighbor2.server = strings.Split(attribute, ":::")[1]
+				frontNeighbor2.hashId = []byte(strings.Split(attribute, ":::")[2])
+				node.frontNodes = append(node.frontNodes, frontNeighbor2)
+			} else if strings.Contains(attribute, "backNeighbor1") {
+				backNeighbor1 := Node{}
+				backNeighbor1.id = strings.Split(attribute, ":::")[0]
+				backNeighbor1.server = strings.Split(attribute, ":::")[1]
+				backNeighbor1.hashId = []byte(strings.Split(attribute, ":::")[2])
+				node.backNodes = append(node.backNodes, backNeighbor1)
+			} else if strings.Contains(attribute, "backNeighbor2") {
+				backNeighbor2 := Node{}
+				backNeighbor2.id = strings.Split(attribute, ":::")[0]
+				backNeighbor2.server = strings.Split(attribute, ":::")[1]
+				backNeighbor2.hashId = []byte(strings.Split(attribute, ":::")[2])
+				node.backNodes = append(node.backNodes, backNeighbor2)
+			}
+		}
+		newNodes = append(newNodes, node)
+	}
+	// update the nodes array
+	s.nodes = newNodes
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: ./server <port> <name>")
@@ -176,6 +239,7 @@ func main() {
 	server := NewServer(os.Args[1], os.Args[2])
 	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
 	http.HandleFunc("/getListServer/", server.HandleShoppingListGet)
+	http.HandleFunc("/shareNeighboursInformation", server.HandleNeighboursInformation)
 	go server.Run()
 	fmt.Println("listening on port", server.port)
 	log.Fatal(http.ListenAndServe(":"+server.port, nil))
