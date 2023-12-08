@@ -155,20 +155,20 @@ func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Req
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			fmt.Println("Error sending request:", err)
-			return
+			continue
 		}
 
 		// Close the response body
 		err = resp.Body.Close()
 		if err != nil {
 			fmt.Println("Error closing response body:", err)
-			return
+			continue
 		}
 
 		// Check the response status code
 		if resp.StatusCode != http.StatusOK {
 			fmt.Println("Error sending file to server:", resp.Status)
-			return
+			continue
 		}
 
 		// Print a success message
