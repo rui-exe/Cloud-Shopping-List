@@ -1,6 +1,7 @@
 package main
 
 import (
+	"CloudShoppingList/crdt"
 	"database/sql"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"crypto/sha256"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -47,6 +49,7 @@ func NewServer(port string, name string) *Server {
 		CREATE TABLE IF NOT EXISTS shopping_lists (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			email TEXT NOT NULL,
+			email_hash TEXT NOT NULL,
 			shopping_list BLOB NOT NULL
 		);
 	`)
@@ -130,18 +133,39 @@ func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http
 
 	fmt.Println("File name:", handler.Filename)
 
+	hash := sha256.New()
+	hash.Write([]byte(email))
+	emailHash := hash.Sum(nil)
+
+	row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email_hash = ?", string(emailHash))
+	var shoppingListDatabase []byte
+	row.Scan(&shoppingListDatabase)
 	// read the shopping list from the file
-	shoppingList, err := io.ReadAll(file)
+	shoppingListClient, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(writer, "Error reading file", http.StatusBadRequest)
 		return
 	}
 
-	// insert the shopping list into the database
-	_, err = s.db.Exec("INSERT INTO shopping_lists (email, shopping_list) VALUES (?, ?)", email, shoppingList)
-	if err != nil {
-		http.Error(writer, "Error inserting shopping list into database", http.StatusInternalServerError)
-		return
+	// Join the shopping list from the database and the shopping list from the client
+	// using the CRDT implementation
+	if len(shoppingListDatabase) != 0 {
+		listClient := crdt.FromGOB64(string(shoppingListClient))
+		listDatabase := crdt.FromGOB64(string(shoppingListDatabase))
+		listDatabase.Join(listClient)
+		shoppingListClient = []byte(listClient.ToGOB64())
+		_, err = s.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", shoppingListClient, string(emailHash))
+		if err != nil {
+			http.Error(writer, "Error updating shopping list in database", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// insert the shopping list into the database
+		_, err = s.db.Exec("INSERT INTO shopping_lists (email, email_hash, shopping_list) VALUES (?, ?, ?)", email, string(emailHash), shoppingListClient)
+		if err != nil {
+			http.Error(writer, "Error inserting shopping list into database", http.StatusInternalServerError)
+			return
+		}
 	}
 	// send a success response to the load balancer
 	writer.WriteHeader(http.StatusOK)
@@ -155,8 +179,13 @@ func (s *Server) HandleShoppingListGet(writer http.ResponseWriter, request *http
 	fmt.Println("")
 	email := strings.TrimPrefix(request.URL.Path, "/getListServer/")
 	fmt.Println("Email:", email)
+
+	hash := sha256.New()
+	hash.Write([]byte(email))
+	emailHash := hash.Sum(nil)
+
 	// get the shopping list from the database
-	row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email = ?", email)
+	row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email_hash = ?", string(emailHash))
 	var shoppingList []byte
 	err := row.Scan(&shoppingList)
 	if err != nil {

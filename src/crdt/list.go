@@ -40,7 +40,6 @@ func NewList(id string) *List {
 	for key := range list.Data {
 		list.Data[key] = &DotStore{Data: make(map[Dot]Counter)}
 	}
-
 	return list
 }
 
@@ -64,12 +63,11 @@ func (list *List) Remove(key string) {
 
 func (DotStore *DotStore) update(replicaID string, change Counter, cc *causalcontext.CausalContext) {
 	version := -1
-	for dot, _ := range DotStore.Data {
+	for dot := range DotStore.Data {
 		if dot.ReplicaID == replicaID {
 			version = dot.Counter
 		}
 	}
-
 	currentCasualContexValue := cc.Current(replicaID)
 
 	if currentCasualContexValue != version {
@@ -100,7 +98,7 @@ func (DotStore *DotStore) Value() int {
 	return value
 }
 
-func (list *List) join(other *List) {
+func (list *List) Join(other *List) {
 	originalData := make(map[string]*DotStore)
 	for key, dotStore := range list.Data {
 		newDotStore := &DotStore{Data: make(map[Dot]Counter)}
@@ -132,12 +130,10 @@ func (list *List) join(other *List) {
 
 	for key, dotStore := range originalData {
 		if _, exists := other.Data[key]; !exists {
-			for dot, _ := range dotStore.Data {
-
+			for dot := range dotStore.Data {
 				if dot.Counter <= other.Cc.Current(dot.ReplicaID) {
 					list.Data[key].remove(dot)
 				}
-
 			}
 		}
 	}
@@ -146,14 +142,13 @@ func (list *List) join(other *List) {
 	for _, dotStore := range other.Data {
 		dotStore.fresh(other.ReplicaID, other.Cc)
 	}
-
 }
 
-func (DotStore *DotStore) getDot() {
-	for dot, _ := range DotStore.Data {
+func (DotStore *DotStore) GetDot() {
+	for dot := range DotStore.Data {
 		print(dot.ReplicaID)
 		print(dot.Counter)
-		print("Here\n")
+		println("Here")
 	}
 }
 
@@ -163,15 +158,6 @@ func (DotStore *DotStore) add(dot Dot, counter Counter) {
 
 func (DotStore *DotStore) remove(dot Dot) {
 	delete(DotStore.Data, dot)
-}
-func (list *List) ToGOB64() string {
-	b := bytes.Buffer{}
-	e := gob.NewEncoder(&b)
-	err := e.Encode(list)
-	if err != nil {
-		fmt.Println("Error encoding list:", err)
-	}
-	return base64.StdEncoding.EncodeToString(b.Bytes())
 }
 
 func FromGOB64(s string) *List {
@@ -188,6 +174,26 @@ func FromGOB64(s string) *List {
 		fmt.Println("Error decoding list:", err)
 	}
 	return list
+}
+
+func (list *List) ToGOB64() string {
+	b := bytes.Buffer{}
+	e := gob.NewEncoder(&b)
+	err := e.Encode(list)
+	if err != nil {
+		fmt.Println("Error encoding list:", err)
+	}
+	return base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
+func printList(list *List) {
+	println("List: ", list.ReplicaID)
+	for key, dotStore := range list.Data {
+		print("  ", key)
+		print(":")
+		println(dotStore.Value())
+	}
+	println()
 }
 
 func (list *List) init() {
@@ -223,18 +229,32 @@ func Test() {
 	list1 := NewList("1")
 	list1.Increment("friend")
 	list1.Increment("friend")
+	list1.Increment("newItem")
+	// list1.Increment("newItem2")
+
 	list2 := NewList("2")
-	list2.join(list1)
-	print(list1.Data["friend"].Value())
-	print(list2.Data["friend"].Value())
-	print("\n")
+	list2.Join(list1)
+
+	printList(list1)
+	printList(list2)
+
 	list2.Remove("friend")
+	list2.Increment("newItem2")
+	println("Remove friend from list2 and add newItem2:")
+	printList(list2)
+
 	list1.Increment("friend")
 	list1.Increment("friend")
 	list1.Increment("friend")
-	list1.join(list2)
-	print(list1.Data["friend"].Value())
-	print("\n")
+	println("Add 3 friend to list1:")
+	printList(list1)
+	list1.Decrement("friend")
+	println("Remove 1 friend from list1:")
+	printList(list1)
+	list1.Join(list2)
+
+	printList(list1)
+	println()
 }
 
 func max(c1 Counter, c2 Counter) Counter {
@@ -244,7 +264,6 @@ func max(c1 Counter, c2 Counter) Counter {
 func maxInt(i1 int, i2 int) int {
 	if i1 > i2 {
 		return i1
-	} else {
-		return i2
 	}
+	return i2
 }
