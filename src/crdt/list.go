@@ -30,6 +30,10 @@ type Dot struct {
 	Counter   int
 }
 
+func (list *List) GetID() string {
+	return list.ReplicaID
+}
+
 func NewList(id string) *List {
 	list := &List{
 		Data:      make(map[string]*DotStore),
