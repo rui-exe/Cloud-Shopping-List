@@ -286,8 +286,13 @@ func (r *Ring) Put(email string) ([]string, error) {
 	forbiddenIds[parentId] = true
 
 	// Determine the next two nodes for replication
+	idx := i
 	for j := 1; j <= r.ReplicationFactor; {
 		idToCheck := ""
+		if (i+j)%len(r.Nodes) == idx {
+			fmt.Println("No servers to satisfy replication factor")
+			return nil, fmt.Errorf("no servers to satisfy replication factor, please add more servers")
+		}
 		if r.Nodes[(i+j)%len(r.Nodes)].IsVirtual {
 			idToCheck = r.Nodes[(i+j)%len(r.Nodes)].RealNodeId
 		} else {
