@@ -65,7 +65,7 @@ func (r *Ring) AddNode(id, server string) {
 	r.Nodes = append(r.Nodes, *realNode)
 	r.RealToVirtual[id] = []string{}
 	for i := 0; i < r.virtualNodes; i++ {
-		virtualId := id + strconv.Itoa(i)
+		virtualId := id + "-" + strconv.Itoa(i)
 		node := NewNode(virtualId, server, true, id)
 		r.Nodes = append(r.Nodes, *node)
 		r.RealToVirtual[id] = append(r.RealToVirtual[id], virtualId)
@@ -264,6 +264,7 @@ func (r *Ring) Put(email string) ([]string, error) {
 	hash := sha256.New()
 	hash.Write([]byte(email))
 	emailHash := hash.Sum(nil)
+	fmt.Println("Email hash is ", emailHash)
 
 	searchfn := func(i int) bool {
 		return bytes.Compare(r.Nodes[i].HashId, emailHash) != -1

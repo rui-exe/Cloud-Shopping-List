@@ -67,7 +67,7 @@ func (lb *LoadBalancer) HandleNodeConnection(w http.ResponseWriter, r *http.Requ
 	lb.Ring.PrintNodes()
 	lb.Ring.PrintNeighbors()
 	w.WriteHeader(http.StatusOK)
-	go lb.shareNeighboursInformation()
+	go lb.shareNeighboursAndReceiveKeys(nodeAddress)
 }
 
 func (lb *LoadBalancer) HandleShoppingListPut(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +220,25 @@ func (lb *LoadBalancer) shareNeighboursInformation() {
 		// Print a success message
 		fmt.Println("Sent neighbours information to server" + server + " successfully")
 	}
+}
+
+func (lb *LoadBalancer) shareNeighboursAndReceiveKeys(server string) {
+	lb.shareNeighboursInformation()
+	//send request to server to get the keys
+	resp, err := http.Get("http://" + server + "/requestKeys")
+	if err != nil {
+		fmt.Println("Error sending request to server", err)
+	}
+	defer resp.Body.Close()
+
+	// Check the response status code
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Server responded with error", resp.Status)
+		return
+	}
+
+	// Print a success message
+	fmt.Println("Signaled new server to receive its keys successfully")
 }
 
 func (lb *LoadBalancer) HandleShoppingListGet(w http.ResponseWriter, r *http.Request) {

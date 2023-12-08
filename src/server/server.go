@@ -2,6 +2,8 @@ package main
 
 import (
 	"CloudShoppingList/crdt"
+	"bytes"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"io"
@@ -9,9 +11,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
-	"crypto/sha256"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -259,6 +261,207 @@ func (s *Server) HandleNeighboursInformation(writer http.ResponseWriter, request
 	s.nodes = newNodes
 }
 
+func (s *Server) HandleRequestKeys(_ http.ResponseWriter, _ *http.Request) {
+	fmt.Println("Handling request keys")
+	for _, node := range s.nodes {
+		done := false
+		for i, frontNode := range node.frontNodes {
+			fmt.Println("Requesting my keys from front node number " + strconv.Itoa(i+1) + " with port " + frontNode.server)
+			nodeHash := node.hashId
+			firstBackNodeHash := node.backNodes[0].hashId
+			// send the node id and the first back node id to the first front node
+			body := strings.NewReader(fmt.Sprintf("%s,%s,%s", s.port, string(nodeHash), string(firstBackNodeHash)))
+			for attempt := 1; attempt <= 3; attempt++ {
+				resp, err := http.Post(fmt.Sprintf("http://%s/sendMeKeys", frontNode.server), "text/plain", body)
+				if err != nil {
+					fmt.Printf("Error on attempt %d: %s\n", attempt, err)
+					time.Sleep(time.Second * 2) // Adjust the delay between retries as needed
+					continue
+				}
+
+				defer func(Body io.ReadCloser) {
+					err := Body.Close()
+					if err != nil {
+						fmt.Println(err)
+					}
+				}(resp.Body)
+
+				if resp.StatusCode == http.StatusOK {
+					fmt.Println("Successfully sent request to front node number " + strconv.Itoa(i+1) + " with port " + frontNode.server)
+					done = true
+					break
+				}
+
+				fmt.Printf("Attempt %d failed with status code: %d\n", attempt, resp.StatusCode)
+				time.Sleep(time.Second * 2) // Adjust the delay between retries as needed
+			}
+			if done {
+				break
+			}
+		}
+		fmt.Println("Done requesting keys from front nodes of node" + node.id)
+	}
+}
+
+func (s *Server) HandleSendMeKeys(writer http.ResponseWriter, request *http.Request) {
+	// parse the request body
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusBadRequest)
+		return
+	}
+	serverPort := strings.Split(string(body), ",")[0]
+	fmt.Println("Sending requested keys to server with port " + string(serverPort))
+	nodeHash := strings.Split(string(body), ",")[1]
+	firstBackNodeHash := strings.Split(string(body), ",")[2]
+	if bytes.Compare([]byte(nodeHash), []byte(firstBackNodeHash)) == 1 {
+		// query the database for all the shopping lists
+		rows, err := s.db.Query("SELECT email, email_hash, shopping_list FROM shopping_lists where email_hash > ? AND email_hash <= ?", firstBackNodeHash, nodeHash)
+		if err != nil {
+			fmt.Println("Error querying database:", err)
+			return
+		}
+		defer func(rows *sql.Rows) {
+			err := rows.Close()
+			if err != nil {
+				fmt.Println(err)
+			}
+		}(rows)
+		// iterate over the shopping lists
+		for rows.Next() {
+			// send the row to the server with the specified port
+			var email string
+			var emailHash string
+			var shoppingList []byte
+			err = rows.Scan(&email, &emailHash, &shoppingList)
+			if err != nil {
+				fmt.Println("Error scanning row:", err)
+				return
+			}
+			fmt.Println("Sending shopping list with email " + email + " to server with port " + serverPort)
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			err = writer.WriteField("email", email)
+			if err != nil {
+				fmt.Println("Error writing email field:", err)
+				return
+			}
+			part, err := writer.CreateFormFile("file", email)
+			if err != nil {
+				fmt.Println("Error creating form file:", err)
+				return
+			}
+			_, err = part.Write(shoppingList)
+			if err != nil {
+				fmt.Println("Error writing to form file:", err)
+				return
+			}
+			err = writer.Close()
+			if err != nil {
+				fmt.Println("Error closing writer:", err)
+				return
+			}
+
+			req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/putListServer", serverPort), body)
+			if err != nil {
+				fmt.Println("Error creating new request:", err)
+				return
+			}
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				fmt.Println("Error sending request:", err)
+				return
+			}
+			err = resp.Body.Close()
+			if err != nil {
+				fmt.Println("Error closing response body:", err)
+				return
+			}
+
+			// Check the response status code
+			if resp.StatusCode != http.StatusOK {
+				fmt.Println("Error sending file to server:", resp.Status)
+				return
+			}
+
+			fmt.Println("Successfully sent shopping list" + email + " to server with port " + serverPort)
+		}
+	} else {
+		// query the database for all the shopping lists
+		rows, err := s.db.Query("SELECT email, email_hash, shopping_list FROM shopping_lists where email_hash > ? OR email_hash < ?", firstBackNodeHash, nodeHash)
+		if err != nil {
+			fmt.Println("Error querying database:", err)
+			return
+		}
+		defer func(rows *sql.Rows) {
+			err := rows.Close()
+			if err != nil {
+				fmt.Println(err)
+			}
+		}(rows)
+		// iterate over the shopping lists
+		for rows.Next() {
+			// send the row to the server with the specified port
+			var email string
+			var emailHash string
+			var shoppingList []byte
+			err = rows.Scan(&email, &emailHash, &shoppingList)
+			if err != nil {
+				fmt.Println("Error scanning row:", err)
+				return
+			}
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			err = writer.WriteField("email", email)
+			if err != nil {
+				fmt.Println("Error writing email field:", err)
+				return
+			}
+			part, err := writer.CreateFormFile("file", email)
+			if err != nil {
+				fmt.Println("Error creating form file:", err)
+				return
+			}
+			_, err = part.Write(shoppingList)
+			if err != nil {
+				fmt.Println("Error writing to form file:", err)
+				return
+			}
+			err = writer.Close()
+			if err != nil {
+				fmt.Println("Error closing writer:", err)
+				return
+			}
+
+			req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%s/putListServer", serverPort), body)
+			if err != nil {
+				fmt.Println("Error creating new request:", err)
+				return
+			}
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				fmt.Println("Error sending request:", err)
+				return
+			}
+			err = resp.Body.Close()
+			if err != nil {
+				fmt.Println("Error closing response body:", err)
+				return
+			}
+
+			// Check the response status code
+			if resp.StatusCode != http.StatusOK {
+				fmt.Println("Error sending file to server:", resp.Status)
+				return
+			}
+
+			fmt.Println("Successfully sent shopping list" + email + " to server with port " + serverPort)
+		}
+	}
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: ./server <port> <name>")
@@ -269,6 +472,8 @@ func main() {
 	http.HandleFunc("/putListServer", server.HandleShoppingListPut)
 	http.HandleFunc("/getListServer/", server.HandleShoppingListGet)
 	http.HandleFunc("/shareNeighboursInformation", server.HandleNeighboursInformation)
+	http.HandleFunc("/requestKeys", server.HandleRequestKeys)
+	http.HandleFunc("/sendMeKeys", server.HandleSendMeKeys)
 	go server.Run()
 	fmt.Println("listening on port", server.port)
 	log.Fatal(http.ListenAndServe(":"+server.port, nil))
