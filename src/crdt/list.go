@@ -136,7 +136,7 @@ func (list *List) Join(other *List) {
 		if _, exists := other.Data[key]; !exists {
 			for dot := range dotStore.Data {
 				if dot.Counter <= other.Cc.Current(dot.ReplicaID) {
-					list.Data[key].remove(dot)
+					delete(list.Data, key)
 				}
 			}
 		}
@@ -229,11 +229,46 @@ func LoadFromFile(filename string, clientID string) *List {
 	return list
 }
 
+func Teste2() {
+	list1 := NewList("1")
+	list1.Increment("arroz")
+	list1.Increment("arroz")
+	list1.Increment("arroz")
+
+	list2 := NewList("2")
+	list2.Increment("massa")
+	
+	
+	list3 := FromGOB64(list1.ToGOB64())
+	
+
+	list3.Join(list2)
+
+	list1.Join(list3)
+
+	list2.Join(list3)
+
+	list1.Remove("arroz")
+
+	list3.Join(list1)	
+
+	list2.Join(list3)
+
+	printList(list1)
+	printList(list2)
+	printList(list3)
+
+}
+
 func Test() {
 	list1 := NewList("1")
-	list1.Increment("friend")
-	list1.Increment("friend")
-	list1.Increment("newItem")
+	list1.Increment("arroz")
+	list1.Increment("arroz")
+	list1.Increment("arroz")
+	list1.Increment("arroz")
+	list1.Increment("massa")
+	list1.Increment("massa")
+	list1.Increment("massa")
 	// list1.Increment("newItem2")
 
 	list2 := NewList("2")
