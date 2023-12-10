@@ -461,8 +461,8 @@ func (s *Server) HandleSendMeKeys(writer http.ResponseWriter, request *http.Requ
 	}
 }
 
-func (server *Server) retrieveCRDTsInRange(startHash, endHash string) ([]crdt.List, error) {
-	var crdts []crdt.List
+func (server *Server) retrieveCRDTsInRange(startHash, endHash string) ([]string, error) {
+	var crdts []string
 	var rows *sql.Rows
 	var err error
 	if startHash < endHash {
@@ -492,8 +492,8 @@ func (server *Server) retrieveCRDTsInRange(startHash, endHash string) ([]crdt.Li
 		if err != nil {
 			return nil, err
 		}
-		crdt := crdt.FromGOB64(string(shoppingList))
-		crdts = append(crdts, *crdt)
+		crdt := string(shoppingList) + "####" + email + "####" + emailHash
+		crdts = append(crdts, crdt)
 	}
 
 	return crdts, nil
@@ -503,14 +503,11 @@ func (server *Server) Sync() {
 	for _, node := range server.nodes {
 		for _, frontNeighbor := range node.frontNodes {
 			fmt.Println("Sending hash space between the first back neighbour and the node itself to the front neighbor with port " + frontNeighbor.server)
-			var crdts []crdt.List // Use your actual CRDT type
+			var crdts []string // Use your actual CRDT type
 			crdts, _ = server.retrieveCRDTsInRange(string(node.hashId), string(node.backNodes[0].hashId))
 
-			var serializedCRDTs []string
-			for _, crdt := range crdts {
-				serializedCRDTs = append(serializedCRDTs, string(crdt.ToGOB64()))
-			}
-			additionalData := strings.Join(serializedCRDTs, "++++")
+			
+			additionalData := strings.Join(crdts, "++++")
 
 			requestBody := fmt.Sprintf("%s****%s", string(node.hashId), string(node.backNodes[0].hashId))
 			if len(additionalData) > 0 {
@@ -532,25 +529,24 @@ func (server *Server) Sync() {
 			}
 			if len(responseData) != 0 {
 				for _, shoppingList := range strings.Split(string(responseData), "****") {
-					receivedShoppingList := crdt.FromGOB64(string(shoppingList))
-					email := receivedShoppingList.ReplicaID
-					hash := sha256.New()
-					hash.Write([]byte(receivedShoppingList.ReplicaID))
-					emailHash := hash.Sum(nil)
-					row := server.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email_hash = ?", string(emailHash))
+					receivedShoppingList := crdt.FromGOB64(strings.Split(shoppingList, "####")[0])
+					email := strings.Split(shoppingList, "####")[1]
+					
+					emailHash := strings.Split(shoppingList, "####")[2]
+					row := server.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email_hash = ?", emailHash)
 					var shoppingListDatabase []byte
 					row.Scan(&shoppingListDatabase)
 					if len(shoppingListDatabase) != 0 {
 						listDatabase := crdt.FromGOB64(string(shoppingListDatabase))
 						listDatabase.Join(receivedShoppingList)
 						newShoppingList := []byte(listDatabase.ToGOB64())
-						_, err = server.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", string(newShoppingList), string(emailHash))
+						_, err = server.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", string(newShoppingList), emailHash)
 						if err != nil {
 							fmt.Println("Error updating shopping list in database:", err)
 							continue
 						}
 					} else {
-						_, err = server.db.Exec("INSERT INTO shopping_lists (email, email_hash, shopping_list) VALUES (?, ?, ?)", email, string(emailHash), string(shoppingList))
+						_, err = server.db.Exec("INSERT INTO shopping_lists (email, email_hash, shopping_list) VALUES (?, ?, ?)", email, emailHash, string(shoppingList))
 						if err != nil {
 							fmt.Println("Error inserting shopping list into database:", err)
 							return
@@ -584,9 +580,9 @@ func (s *Server) HandleSyncShoppingList(w http.ResponseWriter, r *http.Request) 
 
 	var rows *sql.Rows
 	if startHash < endHash {
-		rows, err = s.db.Query("SELECT shopping_list FROM shopping_lists where email_hash > ? AND email_hash <= ?", string(startHash), string(endHash))
+		rows, err = s.db.Query("SELECT email, email_hash, shopping_list FROM shopping_lists where email_hash > ? AND email_hash <= ?", string(startHash), string(endHash))
 	} else {
-		rows, err = s.db.Query("SELECT shopping_list FROM shopping_lists where email_hash > ? OR email_hash <= ?", string(startHash), string(endHash))
+		rows, err = s.db.Query("SELECT email, email_hash, shopping_list FROM shopping_lists where email_hash > ? OR email_hash <= ?", string(startHash), string(endHash))
 	}
 	if err != nil {
 		http.Error(w, "Error querying database", http.StatusInternalServerError)
@@ -594,23 +590,23 @@ func (s *Server) HandleSyncShoppingList(w http.ResponseWriter, r *http.Request) 
 	}
 	defer rows.Close()
 
-	var crdts []*crdt.List
+	var crdts []string
 	for rows.Next() {
+		var email string
+		var emailHash string
 		var shoppingList []byte
-		err = rows.Scan(&shoppingList)
+		err = rows.Scan(&email, &emailHash, &shoppingList)
 		if err != nil {
 			http.Error(w, "Error scanning row", http.StatusInternalServerError)
 			return
 		}
-		crdts = append(crdts, crdt.FromGOB64(string(shoppingList)))
+		crdt := string(shoppingList) + "####" + email + "####" + emailHash
+		crdts = append(crdts, crdt)
 	}
 
-	var serializedCRDTs []string
-	for _, crdt := range crdts {
-		serializedCRDTs = append(serializedCRDTs, string(crdt.ToGOB64()))
-	}
+	
 
-	response := strings.Join(serializedCRDTs, "****")
+	response := strings.Join(crdts, "****")
 	_, err = w.Write([]byte(response))
 	if err != nil {
 		http.Error(w, "Error writing response", http.StatusInternalServerError)
@@ -619,25 +615,24 @@ func (s *Server) HandleSyncShoppingList(w http.ResponseWriter, r *http.Request) 
 	//update the database
 	if len(additionalCRDTs) != 0 {
 		for _, additionalCRDT := range additionalCRDTs {
-			receivedShoppingList := crdt.FromGOB64(string(additionalCRDT))
-			email := receivedShoppingList.ReplicaID
-			hash := sha256.New()
-			hash.Write([]byte(receivedShoppingList.ReplicaID))
-			emailHash := hash.Sum(nil)
-			row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email_hash = ?", string(emailHash))
+			receivedCRDT := strings.Split(additionalCRDT, "####")[0]
+			email := strings.Split(additionalCRDT, "####")[1]
+			emailHash := strings.Split(additionalCRDT, "####")[2]
+			receivedShoppingList := crdt.FromGOB64(string(receivedCRDT))
+			row := s.db.QueryRow("SELECT shopping_list FROM shopping_lists WHERE email_hash = ?", emailHash)
 			var shoppingListDatabase []byte
 			row.Scan(&shoppingListDatabase)
 			if len(shoppingListDatabase) != 0 {
 				listDatabase := crdt.FromGOB64(string(additionalCRDT))
 				listDatabase.Join(receivedShoppingList)
 				newShoppingList := []byte(listDatabase.ToGOB64())
-				_, err = s.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", string(newShoppingList), string(emailHash))
+				_, err = s.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", string(newShoppingList), emailHash)
 				if err != nil {
 					fmt.Println("Error updating shopping list in database:", err)
 					continue
 				}
 			} else {
-				_, err = s.db.Exec("INSERT INTO shopping_lists (email, email_hash, shopping_list) VALUES (?, ?, ?)", email, string(emailHash), string(additionalCRDT))
+				_, err = s.db.Exec("INSERT INTO shopping_lists (email, email_hash, shopping_list) VALUES (?, ?, ?)", email, emailHash, string(additionalCRDT))
 				if err != nil {
 					fmt.Println("Error inserting shopping list into database:", err)
 					return
@@ -662,14 +657,12 @@ func main() {
 	http.HandleFunc("/sendMeKeys", server.HandleSendMeKeys)
 	http.HandleFunc("/syncShoppingList", server.HandleSyncShoppingList)
 	// sync the shopping lists
-	/**
 	go func() {
 		for {
 			time.Sleep(time.Second * 5)
 			server.Sync()
 		}
 	}()
-	*/
 	go server.Run()
 	fmt.Println("listening on port", server.port)
 	log.Fatal(http.ListenAndServe(":"+server.port, nil))
