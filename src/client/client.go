@@ -159,7 +159,7 @@ func (c *Client) pull(filename string, maxRetries int, retryInterval time.Durati
 }
 
 func (c *Client) makeShoppingList(email string) {
-	list := crdt.NewList(email)
+	list := crdt.NewList(c.email)
 	fmt.Print("How many items do you want the list to have: ")
 	var numItems int
 	_, err := fmt.Scanln(&numItems)
