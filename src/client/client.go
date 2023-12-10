@@ -133,20 +133,26 @@ func (c *Client) pull(filename string, maxRetries int, retryInterval time.Durati
 
 		if resp.StatusCode == http.StatusOK {
 			fmt.Println("Pulled from the server successfully.")
-			//save to file
-			file, err := os.Create("../list_storage/" + c.email + "/" + filename)
+			//read body
+			buf := new(bytes.Buffer)
+			_, err := buf.ReadFrom(resp.Body)
 			if err != nil {
-				fmt.Println("Error creating file:", err)
-				return -1
+				fmt.Println("Error reading body:", err)
+				return 0
 			}
-			defer file.Close()
-			_, err = io.Copy(file, resp.Body)
-			if err != nil {
-				fmt.Println("Error copying response body to file:", err)
-				return -1
+			newList := crdt.FromGOB64(buf.String())
+			//get old list
+			oldList := crdt.LoadFromFile(filename, c.email)
+			if oldList == nil {
+				oldList = crdt.NewList(c.email)
+				oldList.Join(newList)
+				oldList.SaveToFile(filename, c.email)
+				return resp.StatusCode
 			}
-
-			fmt.Println("Saved to file successfully.")
+			//join old list with new list
+			oldList.Join(newList)
+			//save list to file
+			oldList.SaveToFile(filename, c.email)
 			return resp.StatusCode
 		}
 		fmt.Printf("Error pulling from the server: %d.\n", resp.StatusCode)
@@ -190,11 +196,11 @@ func (c *Client) makeShoppingList(email string) {
 	list.SaveToFile(email, c.email)
 }
 
-func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
+func (c *Client) editList(list **crdt.List) error {
 	for {
 		fmt.Println("")
 		fmt.Println("Current list:")
-		for key, value := range list.Data {
+		for key, value := range (*list).Data {
 			fmt.Println(key, value.Value())
 		}
 		fmt.Println("")
@@ -209,7 +215,7 @@ func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
 		_, err := fmt.Scanln(&choice)
 		if err != nil {
 			fmt.Println("Error scanning input:", err)
-			return list, err
+			return err
 		}
 		switch choice {
 		case 1:
@@ -218,17 +224,17 @@ func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
 			_, err := fmt.Scanln(&itemName)
 			if err != nil {
 				fmt.Println("Error scanning input:", err)
-				return list, err
+				return err
 			}
 			fmt.Print("Enter item quantity: ")
 			var itemQuantity int
 			_, err2 := fmt.Scanln(&itemQuantity)
 			if err2 != nil {
 				fmt.Println("Error scanning input:", err2)
-				return list, err2
+				return err2
 			}
 			for j := 0; j < itemQuantity; j++ {
-				list.Increment(itemName)
+				(*list).Increment(itemName)
 			}
 			break
 		case 2:
@@ -237,9 +243,9 @@ func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
 			_, err := fmt.Scanln(&itemName)
 			if err != nil {
 				fmt.Println("Error scanning input:", err)
-				return list, err
+				return err
 			}
-			list.Remove(itemName)
+			(*list).Remove(itemName)
 			break
 		case 3:
 			fmt.Print("Enter item name: ")
@@ -247,16 +253,16 @@ func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
 			_, err := fmt.Scanln(&itemName)
 			if err != nil {
 				fmt.Println("Error scanning input:", err)
-				return list, err
+				return err
 			}
 			fmt.Print("Current quantity: ")
-			fmt.Println(list.Data[itemName].Value())
+			fmt.Println((*list).Data[itemName].Value())
 			fmt.Print("Increment or decrement? (i/d): ")
 			var answer string
 			_, err2 := fmt.Scanln(&answer)
 			if err2 != nil {
 				fmt.Println("Error scanning input:", err2)
-				return list, err2
+				return err2
 			}
 			if answer == "i" {
 				fmt.Print("Enter quantity to increment by: ")
@@ -264,10 +270,10 @@ func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
 				_, err3 := fmt.Scanln(&itemQuantity)
 				if err3 != nil {
 					fmt.Println("Error scanning input:", err3)
-					return list, err3
+					return err3
 				}
 				for j := 0; j < itemQuantity; j++ {
-					list.Increment(itemName)
+					(*list).Increment(itemName)
 				}
 			}
 			if answer == "d" {
@@ -276,14 +282,14 @@ func (c *Client) editList(list *crdt.List) (*crdt.List, error) {
 				_, err3 := fmt.Scanln(&itemQuantity)
 				if err3 != nil {
 					fmt.Println("Error scanning input:", err3)
-					return list, err3
+					return err3
 				}
 				for j := 0; j < itemQuantity; j++ {
-					list.Decrement(itemName)
+					(*list).Decrement(itemName)
 				}
 			}
 		case 4:
-			return list, nil
+			return nil
 		default:
 			fmt.Println("Invalid choice")
 		}
@@ -344,12 +350,16 @@ func (c *Client) menu() {
 		}
 		fmt.Println("Editing shopping list for", email+"...")
 		list := crdt.LoadFromFile(email, c.email)
-		newList, err := c.editList(list)
+		err = c.editList(&list)
 		if err != nil {
 			fmt.Println("Error editing list:", err)
 			return
 		}
-		newList.SaveToFile(email, c.email)
+		if err != nil {
+			fmt.Println("Error editing list:", err)
+			return
+		}
+		list.SaveToFile(email, c.email)
 	case 3:
 		fmt.Println("")
 		fmt.Print("Enter the email of the list you want to show: ")

@@ -223,6 +223,7 @@ func LoadFromFile(filename string, clientID string) *List {
 	data, err := os.ReadFile("../list_storage/" + clientID + "/" + filename)
 	if err != nil {
 		fmt.Println("Error loading list from file:", err)
+		return nil
 	}
 	list.init()
 	list = FromGOB64(string(data))

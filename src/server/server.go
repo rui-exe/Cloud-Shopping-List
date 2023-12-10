@@ -155,8 +155,7 @@ func (s *Server) HandleShoppingListPut(writer http.ResponseWriter, request *http
 		listClient := crdt.FromGOB64(string(shoppingListClient))
 		listDatabase := crdt.FromGOB64(string(shoppingListDatabase))
 		listDatabase.Join(listClient)
-		listToStore := []byte(listDatabase.ToGOB64())
-		_, err = s.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", listToStore, string(emailHash))
+		_, err = s.db.Exec("UPDATE shopping_lists SET shopping_list = ? WHERE email_hash = ?", []byte(listDatabase.ToGOB64()), string(emailHash))
 		if err != nil {
 			http.Error(writer, "Error updating shopping list in database", http.StatusInternalServerError)
 			return
@@ -663,12 +662,14 @@ func main() {
 	http.HandleFunc("/sendMeKeys", server.HandleSendMeKeys)
 	http.HandleFunc("/syncShoppingList", server.HandleSyncShoppingList)
 	// sync the shopping lists
+	/**
 	go func() {
 		for {
 			time.Sleep(time.Second * 5)
 			server.Sync()
 		}
 	}()
+	*/
 	go server.Run()
 	fmt.Println("listening on port", server.port)
 	log.Fatal(http.ListenAndServe(":"+server.port, nil))
